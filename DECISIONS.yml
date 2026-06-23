@@ -12,64 +12,103 @@
 version: "1.0"
 decisions:
 
-  # Replace this category name with a concern area or domain that groups related decisions.
-  # Good defaults include Feature, Infrastructure, Business Logic, Security, Data, and CI/CD.
-  # Prefer the top level to express what area the decisions belong to.
-  # Keep specification, design, implementation, and test concerns as decision objects or
-  # sub-decisions inside that area when they independently constrain implementation.
-  Category Name:
-    - # Required. Use a stable ID such as {category}-{sequence}-{shortname}.
-      id: category-001-short-name
-      # Required. Describe the decision in one line.
-      title: Describe the decision in one line
-      # Required. Describe the current binding reason in 1 to 3 concise lines.
-      # Write the reason that constrains implementation now, not the full discussion history.
-      reason: Explain why this decision currently constrains implementation
-      # Optional. Prefer one of the default statuses below.
-      # - ⚠️Discussion In Progress
-      # - ⚠️Discussion Approved
-      # - ⚠️Implementing
-      # - ✅️Implementation Approved
-      # Use exceptional states such as ⛔️On Hold or ⛔️Cancelled only when needed.
-      status: "⚠️Discussion In Progress"
-      # Optional. Point to the related discussion record when this decision family comes from one discussion.
-      link: "records/category-001-discussion-topic.md"
-      # Optional. Add children only when a contract detail or rule becomes independently active.
-      # Use sub-decisions for invariants, non-goals, acceptance criteria, or failure conditions
-      # only when those details need to be referenced on their own.
-      # Example:
-      # sub_decisions:
-      #   - id: category-001-1-contract-detail
-      #     title: Describe one independently active contract detail
-      #     reason: Explain why this detail currently constrains implementation
-      #     status: "⚠️Discussion Approved"
-      #     sub_decisions: []
+  Installer:
+    - id: installer-001-project-scope
+      title: AI 利用開発環境の標準汎用インストーラーを提供する
+      reason: >
+        本リポジトリ（MyDevSetup）の主目的は、対象プロジェクトへ AI 開発環境アセットを
+        一括配布する curl|bash 実行可能なインストーラーを提供すること。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
       sub_decisions: []
 
-  # Example:
-  # Feature:
-  #   - id: feature-001-profile-editing
-  #     title: User profile editing capability
-  #     reason: This feature currently constrains UI, API, and validation work across the app
-  #     status: "⚠️Implementing"
-  #     link: "records/feature-001-profile-editing.md"
-  #     sub_decisions:
-  #       - id: feature-001-1-spec-fields
-  #         title: Editable fields and validation rules
-  #         reason: The API and form schema must agree on allowed fields before implementation
-  #         status: "⚠️Discussion Approved"
-  #         sub_decisions: []
-  #       - id: feature-001-2-design-boundary
-  #         title: Server and client responsibility boundary
-  #         reason: Component structure and mutation flow depend on this boundary
-  #         status: "⚠️Implementing"
-  #         sub_decisions: []
-  #       - id: feature-001-3-test-acceptance
-  #         title: Acceptance coverage for success and rejection paths
-  #         reason: The feature is incomplete unless valid updates succeed and invalid input is rejected
-  #         status: "⚠️Discussion Approved"
-  #         sub_decisions: []
+    - id: installer-002-templates-agents-md
+      title: templates/AGENTS.md をコピー元テンプレートとして配置する
+      reason: >
+        インストール時の AGENTS.md 配布元は templates/ 配下に置く。
+        初期リリースでは中身空のファイルでよい。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-002-1-initial-empty
+          title: 初期 AGENTS.md テンプレートは空ファイル
+          reason: AGENTS.md の内容定義は別議論とし、インストーラー MVP では空テンプレートをコピーするのみ
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
 
-  # Add more categories and decision objects as needed.
-  # Prefer many small decisions over one overloaded entry.
-  # Every rule that can change the next implementation decision should exist here.
+    - id: installer-003-install-sh-distribution
+      title: ルート install.sh を curl|bash で直接実行可能にする
+      reason: >
+        リポジトリルートの install.sh を raw.githubusercontent.com 経由の
+        curl -fsSL ... | bash 形式で配布・実行できること。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-003-1-curl-pattern
+          title: 配布は curl -fsSL と bash パイプ形式
+          reason: DODKit と同様のワンライナーインストール UX を採用する
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
+
+    - id: installer-004-supported-targets
+      title: 対象 AI ツールは Copilot と Cursor のみ
+      reason: >
+        インストーラーが扱うエディタ/AI ターゲットは GitHub Copilot と Cursor に限定する。
+        他ツール向け分岐は初期スコープ外。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-004-1-non-goals-other-ai
+          title: 非目標 — Copilot/Cursor 以外の AI ツール対応
+          reason: 初期 MVP では copilot/cursor 以外のターゲット分岐を実装しない
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
+
+    - id: installer-005-agents-md-deploy
+      title: AGENTS.md はプロジェクトルートへ配置する（ターゲット共通）
+      reason: >
+        Copilot も Cursor も AGENTS.md の配置先はプロジェクトルートのみ。
+        ターゲット別の追加配置や内容分岐は初期スコープ外。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-005-1-copy-from-templates
+          title: AGENTS.md は templates/AGENTS.md からルートへコピー
+          reason: 配布物 AGENTS.md の生成元は templates/AGENTS.md に固定する
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
+
+    - id: installer-006-dodkit-bundled
+      title: インストーラーは DODKit のインストールも実施する
+      reason: >
+        MyDevSetup の install.sh 実行時に、選択ターゲット向け DODKit アセットの
+        インストールも行う。DODKit 単体インストールに置き換えない。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions: []
+
+    - id: installer-007-dodkit-invocation
+      title: DODKit はターゲット引数と --force 付きで呼び出す
+      reason: >
+        DODKit install.sh は copilot|cursor の明示指定が必要。
+        非対話実行のため bash -s -- <target> --force 形式で委譲する。
+      status: "⚠️Discussion Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-007-1-dodkit-source
+          title: DODKit 取得元は mkgask/DODKit main の install.sh
+          reason: >
+            curl -fsSL https://raw.githubusercontent.com/mkgask/DODKit/main/install.sh
+            をパイプ先 bash に -s -- <target> --force を渡して実行する
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
+        - id: installer-007-2-target-args
+          title: ターゲット引数は copilot または cursor
+          reason: DODKit install.sh の CLI 契約（copilot|cursor）に合わせる
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
+        - id: installer-007-3-decisions-protected
+          title: DODKit による DECISIONS.yml 上書きは行わない
+          reason: DODKit は DECISIONS.yml を上書き保護対象とする。既存プロジェクト決定を失わない
+          status: "⚠️Discussion Approved"
+          sub_decisions: []
