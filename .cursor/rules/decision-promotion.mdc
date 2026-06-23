@@ -1,0 +1,44 @@
+---
+description: DOD Gate A step 3 decision-promotion procedure for manual use in Cursor.
+alwaysApply: false
+---
+
+# Decision Promotion
+
+## Purpose
+Use this skill for Gate A step 3: decision promotion.
+Its job is to convert a validated discussion result into explicit active decisions in `DECISIONS.yml` without leaving implementation-critical rules only in the record.
+
+## Required Inputs
+- Discussion ID
+- The latest validated conclusion in `records/{discussion-id}.md`
+- Current target decisions and statuses in `DECISIONS.yml`
+- The promotion targets named by discussion-validation
+
+## Procedure
+1. Confirm validation passed.
+   Start only after discussion-validation has explicitly accepted the direction and identified what must be promoted or updated.
+2. Choose the correct decision shape.
+   Decide whether the result belongs in an existing decision, a new decision object, or one or more sub-decisions. Split overloaded decisions instead of hiding multiple active rules in one node.
+3. Promote every newly binding rule.
+   Move all implementation-critical constraints from the validated result into `DECISIONS.yml`. Do not leave active rules only in `records/{discussion-id}.md`.
+4. Complete the decision contract.
+   Ensure invariants, non-goals, acceptance criteria, and failure criteria are explicit to the degree needed to keep the next implementation decision correct.
+5. Update status and linkage.
+   Move affected decision statuses to the right discussion or implementation state and ensure the correct `link` points back to `records/{discussion-id}.md`.
+6. Check promotion coverage.
+   Verify that the promoted set is sufficient for another implementer to make the next change correctly without rereading broad history.
+7. Report the promotion result.
+   Name what was promoted, what was updated, and any remaining uncertainty that stays non-binding and therefore remains in the record.
+
+## Guardrails
+- Do not start promotion if discussion-validation is ambiguous or failed.
+- Do not hide new active constraints only in narrative prose.
+- Do not overload one decision when the rules should be separate decision objects or sub-decisions.
+- Keep `DECISIONS.yml` concise, but not at the cost of omitting rules that would let implementation drift.
+
+## Completion Criteria
+- `DECISIONS.yml` reflects every binding outcome of the validated discussion.
+- Decision contracts are explicit enough for the next implementation step.
+- Statuses and links are current.
+- No implementation-critical rule remains only in the record.

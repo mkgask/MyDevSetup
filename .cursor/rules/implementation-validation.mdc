@@ -1,0 +1,46 @@
+---
+description: DOD Gate B and Gate C implementation-validation procedure for manual use in Cursor.
+alwaysApply: false
+---
+
+# Implementation Validation
+
+## Purpose
+Use this skill for Gate B step 3 and Gate C closeout checks.
+Its job is to confirm that the implemented result and its surrounding artifacts actually match the promoted decisions.
+
+## Required Inputs
+- Discussion ID
+- Active decisions and statuses in `DECISIONS.yml`
+- The changed code, tests, docs, templates, and related artifacts
+- Results from the narrow validation checks run during implementation
+
+## Procedure
+1. Start with deterministic checks.
+   Prefer the narrowest behavior test, targeted test file, compile, lint, or typecheck that can falsify the changed slice.
+2. Confirm the executable result for the changed slice.
+   Verify that the focused validation chosen during implementation actually passed, or that the remaining blocker is explicit and scoped.
+3. Check artifact alignment against the active decisions.
+   Confirm that the changed tests, code, docs, templates, and agent guidance match the promoted decisions for the changed scope.
+4. Check terminology and user-facing alignment.
+   Confirm that naming, user-facing wording, and related references do not drift from the active decision set where the changed scope affects them.
+5. Check decision and record hygiene.
+   Confirm that `DECISIONS.yml` status is current, links still point to the right record, and any materially new implementation fact has been appended to `records/{discussion-id}.md` and promoted when binding.
+6. Check the remaining blocker and risk state.
+   Make explicit whether anything still blocks closeout, and whether any remaining risk stays non-binding and therefore belongs in the report rather than in a new decision.
+7. Repair locally when validation exposes a same-slice defect.
+   Fix the defect and rerun the same focused validation before expanding scope.
+8. Close only when the decision contract is satisfied.
+   Report what was validated, what changed, and any remaining risk that did not rise to a new active constraint.
+
+## Guardrails
+- Do not substitute `git diff` for a narrower executable validation when one exists.
+- Do not widen scope to avoid fixing a local validation failure.
+- Do not leave terminology drift between decisions and changed artifacts.
+- Do not close the work while statuses or records are stale.
+
+## Completion Criteria
+- Focused validation passes for the changed scope, or the remaining blocker is explicit.
+- The changed artifacts match the promoted decisions.
+- The required closeout checks have been explicitly covered.
+- Closeout information is ready for the main agent to report.
