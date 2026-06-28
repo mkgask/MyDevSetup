@@ -18,7 +18,7 @@ decisions:
       reason: >
         本リポジトリ（MyDevSetup）の主目的は、対象プロジェクトへ AI 開発環境アセットを
         一括配布する curl|bash 実行可能なインストーラーを提供すること。
-      status: "⚠️Discussion Approved"
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions: []
 
@@ -27,13 +27,13 @@ decisions:
       reason: >
         インストール時の AGENTS.md 配布元は templates/ 配下に置く。
         初期リリースでは中身空のファイルでよい。
-      status: "⚠️Discussion Approved"
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-002-1-initial-empty
           title: 初期 AGENTS.md テンプレートは空ファイル
           reason: AGENTS.md の内容定義は別議論とし、インストーラー MVP では空テンプレートをコピーするのみ
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-003-install-sh-distribution
@@ -41,13 +41,26 @@ decisions:
       reason: >
         リポジトリルートの install.sh を raw.githubusercontent.com 経由の
         curl -fsSL ... | bash 形式で配布・実行できること。
-      status: "⚠️Discussion Approved"
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-003-1-curl-pattern
           title: 配布は curl -fsSL と bash パイプ形式
           reason: DODKit と同様のワンライナーインストール UX を採用する
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-003-2-installer-source
+          title: MyDevSetup install.sh の取得元は mkgask/MyDevSetup main
+          reason: >
+            初期リリースのワンライナーは
+            https://raw.githubusercontent.com/mkgask/MyDevSetup/main/install.sh
+            を配布元として扱う
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-003-3-default-target
+          title: install.sh のターゲット既定値は copilot
+          reason: ターゲット未指定時の実行契約は DODKit と同様に copilot 既定へ揃える
+          status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-004-supported-targets
@@ -55,13 +68,13 @@ decisions:
       reason: >
         インストーラーが扱うエディタ/AI ターゲットは GitHub Copilot と Cursor に限定する。
         他ツール向け分岐は初期スコープ外。
-      status: "⚠️Discussion Approved"
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-004-1-non-goals-other-ai
           title: 非目標 — Copilot/Cursor 以外の AI ツール対応
           reason: 初期 MVP では copilot/cursor 以外のターゲット分岐を実装しない
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-005-agents-md-deploy
@@ -69,13 +82,18 @@ decisions:
       reason: >
         Copilot も Cursor も AGENTS.md の配置先はプロジェクトルートのみ。
         ターゲット別の追加配置や内容分岐は初期スコープ外。
-      status: "⚠️Discussion Approved"
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-005-1-copy-from-templates
           title: AGENTS.md は templates/AGENTS.md からルートへコピー
           reason: 配布物 AGENTS.md の生成元は templates/AGENTS.md に固定する
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-005-2-agents-overwrite
+          title: MyDevSetup の --force は AGENTS.md 上書き判定にのみ適用する
+          reason: AGENTS.md の競合時は既定で保護し、--force 指定時のみ上書きを許可する
+          status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-006-dodkit-bundled
@@ -83,32 +101,37 @@ decisions:
       reason: >
         MyDevSetup の install.sh 実行時に、選択ターゲット向け DODKit アセットの
         インストールも行う。DODKit 単体インストールに置き換えない。
-      status: "⚠️Discussion Approved"
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions: []
 
     - id: installer-007-dodkit-invocation
       title: DODKit はターゲット引数と --force 付きで呼び出す
       reason: >
-        DODKit install.sh は copilot|cursor の明示指定が必要。
-        非対話実行のため bash -s -- <target> --force 形式で委譲する。
-      status: "⚠️Discussion Approved"
+        MyDevSetup install.sh からは DODKit install.sh へ
+        bash -s -- <target> --force 形式で委譲する。
+      status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-007-1-dodkit-source
-          title: DODKit 取得元は mkgask/DODKit main の install.sh
+          title: DODKit 取得元は mkgask/dodkit main の install.sh
           reason: >
-            curl -fsSL https://raw.githubusercontent.com/mkgask/DODKit/main/install.sh
+            curl -fsSL https://raw.githubusercontent.com/mkgask/dodkit/main/install.sh
             をパイプ先 bash に -s -- <target> --force を渡して実行する
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-007-2-target-args
           title: ターゲット引数は copilot または cursor
           reason: DODKit install.sh の CLI 契約（copilot|cursor）に合わせる
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-007-3-decisions-protected
           title: DODKit による DECISIONS.yml 上書きは行わない
           reason: DODKit は DECISIONS.yml を上書き保護対象とする。既存プロジェクト決定を失わない
-          status: "⚠️Discussion Approved"
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-007-4-dodkit-force-fixed
+          title: DODKit 呼び出しは常に --force を付与する
+          reason: DODKit 導入結果を非対話で再現可能にするため MyDevSetup 側で --force を固定付与する
+          status: "✅️Implementation Approved"
           sub_decisions: []
