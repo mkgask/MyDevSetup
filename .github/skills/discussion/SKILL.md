@@ -1,0 +1,51 @@
+---
+name: discussion
+description: 'Run the DOD discussion step. Use for scoping a discussion ID, reviewing active decisions, taking a bounded broad scan across the affected landscape, narrowing to focus areas, and appending discussion history to records/{discussion-id}.md before discussion-validation and decision promotion.'
+user-invocable: false
+---
+
+# Discussion
+
+## Purpose
+Use this skill for Gate A step 1: discussion.
+Its job is to build an intentionally broad but bounded view of the current decision landscape, then narrow to the focus areas that matter most, and record that history in `records/{discussion-id}.md` before any decision promotion.
+
+## Required Inputs
+- Discussion ID
+- Target decision IDs or decision scope
+- Requested scope
+- Original objective or problem statement
+- Current target statuses in `DECISIONS.yml`
+- Any nearby files, tests, commands, behaviors, or domain surfaces that anchor the problem
+
+## Procedure
+1. Resolve the active decision baseline.
+   Read the current target decisions in `DECISIONS.yml`, the linked record if one exists, and the original objective that the discussion is meant to serve.
+2. Run a bounded broad scan before narrowing.
+   Survey the affected landscape widely enough to identify relevant domains, adjacent concerns, likely interfaces, existing constraints, and obvious omission risks. This scan should be broad enough to avoid premature tunnel vision, but bounded by the current objective and requested scope.
+3. Select the focus areas for deeper discussion.
+   Narrow from the broad scan to the specific domains, files, behaviors, or decision objects that most likely control the current choice. Make explicit what is in focus, what is intentionally out of scope for now, and what remains uncertain.
+4. Update the discussion record.
+   If `records/{discussion-id}.md` does not exist, create it from `.dodkit/templates/discussion-record.md`. Otherwise append at EOF only.
+5. Record the current state concisely.
+   Capture why the discussion is happening now, the broad-scan findings that materially constrain the choice, the selected focus areas, the current conclusion, and whether promotion is still pending.
+6. Make the next validation target explicit.
+   State what discussion-validation needs to confirm or reject before any conclusion becomes binding, including any adjacent concerns that must not be forgotten.
+7. Stop at the discussion boundary.
+   Do not promote decisions in this skill. Hand off a candidate direction to discussion-validation.
+
+## Guardrails
+- Do not edit `DECISIONS.yml` before the record is updated.
+- Do not start implementation in this skill.
+- Keep the active decision set lightweight: record history here, promote only binding constraints later.
+- Start broad enough to surface affected domains and omission risks, then narrow deliberately instead of defaulting to implementation-style locality.
+- Keep the broad scan bounded by the current objective and requested scope; do not drift into open-ended repository mapping.
+- Keep records append-only and free of mutable tracking fields.
+
+## Completion Criteria
+- `records/{discussion-id}.md` exists and contains the latest discussion entry.
+- The affected landscape has been scanned broadly enough to justify the chosen focus areas.
+- The current conclusion is explicit enough to validate.
+- Focus areas, explicit exclusions, and major uncertainties are visible in the record.
+- The next validation question is clear.
+- No binding rule remains only in chat.
