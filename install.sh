@@ -2,10 +2,12 @@
 
 set -euo pipefail
 
-TARGET_CLI="copilot"
 FORCE_OVERWRITE=0
+SHOW_HELP=0
 
-SOURCE_REPOSITORY="mkgask/MyDevSetup"
+PASSTHROUGH_ARGS=()
+
+SOURCE_REPOSITORY="mkgask/mydevsetup"
 SOURCE_REF="main"
 SOURCE_TEMPLATE_PATH="templates/AGENTS.md"
 SOURCE_TEMPLATE_URL_BASE="https://raw.githubusercontent.com"
@@ -16,18 +18,20 @@ DESTINATION_AGENTS_PATH="AGENTS.md"
 print_usage() {
 	cat <<'USAGE'
 Usage:
-  install.sh [copilot|cursor] [--force]
+	install.sh [arguments-for-dodkit]
 
 Description:
-  Install MyDevSetup assets and then run DODKit installer for the selected target.
+	Install MyDevSetup assets and then run DODKit installer.
+	Arguments are forwarded to DODKit as-is.
 
-Arguments:
-  copilot                Optional target for GitHub Copilot assets. Default is copilot.
-  cursor                 Optional target for Cursor assets.
+Examples:
+	install.sh
+	install.sh copilot
+	install.sh cursor --force
 
 Options:
-  --force                Overwrite AGENTS.md when it already exists.
-  -h, --help             Show this help.
+	--force                Also used locally to overwrite AGENTS.md when it already exists.
+	-h, --help             Show this help and DODKit help.
 USAGE
 }
 
@@ -117,37 +121,20 @@ confirm_overwrite() {
 	esac
 }
 
-validate_target() {
-	case "$TARGET_CLI" in
-		copilot|cursor)
-			return 0
-			;;
-		*)
-			die "Unsupported target '$TARGET_CLI'. Supported targets are: copilot, cursor."
-			;;
-	esac
-}
-
 parse_args() {
-	while [[ $# -gt 0 ]]; do
+	local argument=""
 
-		case "$1" in
-			copilot|cursor)
-				TARGET_CLI="$1"
-				shift
-				;;
-			--force)
-				FORCE_OVERWRITE=1
-				shift
-				;;
-			-h|--help)
-				print_usage
-				exit 0
-				;;
-			*)
-				die "Unknown argument: $1"
-				;;
-		esac
+	PASSTHROUGH_ARGS=("$@")
+
+	for argument in "$@"; do
+
+		if [[ "$argument" == "--force" ]]; then
+			FORCE_OVERWRITE=1
+		fi
+
+		if [[ "$argument" == "-h" ]] || [[ "$argument" == "--help" ]]; then
+			SHOW_HELP=1
+		fi
 	done
 }
 
@@ -237,9 +224,11 @@ install_agents_template() {
 }
 
 run_dodkit_installer() {
-	log_info "Running DODKit installer with target=$TARGET_CLI"
+	local -a dodkit_args=("$@")
 
-	if ! curl --proto '=https' --tlsv1.2 -fsSL "$DODKIT_INSTALLER_URL" | bash -s -- "$TARGET_CLI" --force; then
+	log_info "Running DODKit installer with passthrough arguments"
+
+	if ! curl --proto '=https' --tlsv1.2 -fsSL "$DODKIT_INSTALLER_URL" | bash -s -- "${dodkit_args[@]}"; then
 		die "DODKit installer failed"
 	fi
 }
@@ -251,11 +240,16 @@ main() {
 	require_command "cmp"
 	require_command "cp"
 	require_command "dirname"
-	validate_target
 
-	log_info "Starting MyDevSetup installer target=$TARGET_CLI source=${SOURCE_REPOSITORY}@${SOURCE_REF}"
+	if [[ "$SHOW_HELP" -eq 1 ]]; then
+		print_usage
+		run_dodkit_installer "${PASSTHROUGH_ARGS[@]}"
+		exit 0
+	fi
+
+	log_info "Starting MyDevSetup installer source=${SOURCE_REPOSITORY}@${SOURCE_REF}"
 	install_agents_template
-	run_dodkit_installer
+	run_dodkit_installer "${PASSTHROUGH_ARGS[@]}"
 	log_success "MyDevSetup installer finished"
 }
 

@@ -125,3 +125,64 @@ Append rules:
 - Current conclusion: 初期 install.sh スコープの closeout 条件を満たした。
 - Promotion to DECISIONS.yml: none
 - Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）
+
+### Entry 0007 (2026-06-28T00:01:00Z)
+- Why now: 運用後フィードバックにより、配布URLの表記と DODKit への引数委譲方針を再確認する必要がある。
+- Findings / trade-offs:
+  - **広域スキャン結果（今回スコープ内）**:
+    - MyDevSetup の raw URL は `mkgask/MyDevSetup` と `mkgask/mydevsetup` の双方で現時点 HTTP 200。
+    - 「小文字でなければ動かない」は現時点で確認できない。
+    - 一方で DODKit 側は `mkgask/DODKit` で HTTP 400、`mkgask/dodkit` で HTTP 200 を観測済み。
+  - **候補方針**:
+    - MyDevSetup 取得元URLは「必須条件」ではなく「運用上の正規表記」として小文字 `mkgask/mydevsetup` を採用する。
+    - MyDevSetup install.sh から DODKit install.sh へ渡す引数は固定化せず、受け取った引数をそのまま透過委譲する。
+    - MyDevSetup 側の `--force` 解釈は AGENTS.md 上書き判定にのみ使い、DODKit 側にも同じ引数列をそのまま渡す。
+  - **意図的な非スコープ**: DODKit 側CLI仕様の再定義、追加オプションの独自実装。
+- Current conclusion: 上記方針で discussion-validation に進める。
+- Promotion to DECISIONS.yml: pending（Entry 0008 検証後）
+- Evidence / references (optional): raw URL HEAD 応答確認（2026-06-28）
+
+### Entry 0008 (2026-06-28T00:01:01Z)
+- Why now: Gate A step 2（discussion-validation）— Entry 0007 の候補方針を実装前監査する。
+- Findings / trade-offs:
+  - **Landscape coverage**: 配布URL表記、DODKit URLの大小文字差、引数委譲境界（MyDevSetup vs DODKit）を確認済み。
+  - **Focus justification**: 変更要求に直結する2点（URL正規化、引数透過）のみを対象としており過不足ない。
+  - **Directional fit**: ユーザー要望（引数固定よりユーザー指定優先）と一致。
+  - **Contract fit**:
+    - 既存の `installer-007-4-dodkit-force-fixed` は新方針と衝突するため更新が必要。
+    - `installer-003-2-installer-source` は小文字表記へ更新対象。
+  - **Validation result**: PASS — 昇格可能。
+- Current conclusion: URL正規化と引数透過委譲を DECISIONS.yml へ昇格してから実装へ進む。
+- Promotion to DECISIONS.yml: promoted update -> installer-003-2-installer-source, installer-007-dodkit-invocation, installer-007-4-dodkit-force-fixed
+- Evidence / references (optional): discussion-validation 手順（`.github/skills/discussion-validation/SKILL.md`）
+
+### Entry 0009 (2026-06-28T00:01:02Z)
+- Why now: Gate B（implementation）として、引数透過委譲と配布URL正規表記の実装反映を行う。
+- Findings / trade-offs:
+  - **実装内容**:
+    - `SOURCE_REPOSITORY` を `mkgask/mydevsetup` に更新。
+    - 引数パースを「拒否/正規化」から「透過委譲」へ変更し、受領した引数列を `bash -s -- "$@"` 相当で DODKit に渡す形へ変更。
+    - MyDevSetup 側では `--force` の有無だけを局所利用し、AGENTS.md 上書き判定に反映。
+    - `-h|--help` は MyDevSetup の使用方法表示に加えて、同じ引数で DODKit help を表示。
+  - **設計上の境界**:
+    - 引数妥当性の最終責任は DODKit 側に委譲。
+    - MyDevSetup 側は AGENTS 配置責務の範囲だけを維持。
+- Current conclusion: 実装は決定更新内容に整合。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): install.sh 変更差分
+
+### Entry 0010 (2026-06-28T00:01:03Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として変更スコープの実行検証を行う。
+- Findings / trade-offs:
+  - **Deterministic checks**:
+    - `bash -n install.sh` PASS
+    - `./install.sh --help` で MyDevSetup help + DODKit help を表示 PASS
+    - `./install.sh not-a-valid-target` で MyDevSetup 側は拒否せず、DODKit 側エラーとして失敗することを確認
+    - 一時ディレクトリで `install.sh cursor --force` 実行 PASS
+  - **Artifact alignment**:
+    - `DECISIONS.yml` の更新内容（URL正規表記、引数透過委譲）と実装が一致。
+  - **Remaining risk**:
+    - MyDevSetup の raw URL は大小文字どちらも現時点で到達可能。小文字採用は互換性要件ではなく運用ポリシー。
+- Current conclusion: 本スコープの closeout 条件を満たした。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）

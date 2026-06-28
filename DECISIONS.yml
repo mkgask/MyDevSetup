@@ -50,11 +50,11 @@ decisions:
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-003-2-installer-source
-          title: MyDevSetup install.sh の取得元は mkgask/MyDevSetup main
+          title: MyDevSetup install.sh の取得元表記は mkgask/mydevsetup main
           reason: >
-            初期リリースのワンライナーは
-            https://raw.githubusercontent.com/mkgask/MyDevSetup/main/install.sh
-            を配布元として扱う
+            運用上の正規表記として
+            https://raw.githubusercontent.com/mkgask/mydevsetup/main/install.sh
+            を配布URLに採用する
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-003-3-default-target
@@ -106,10 +106,10 @@ decisions:
       sub_decisions: []
 
     - id: installer-007-dodkit-invocation
-      title: DODKit はターゲット引数と --force 付きで呼び出す
+      title: DODKit には MyDevSetup が受け取った引数を透過委譲する
       reason: >
-        MyDevSetup install.sh からは DODKit install.sh へ
-        bash -s -- <target> --force 形式で委譲する。
+        MyDevSetup install.sh は DODKit install.sh の振る舞いを固定化せず、
+        受領した引数列をそのまま `bash -s -- ...` で委譲する。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
@@ -131,7 +131,7 @@ decisions:
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-007-4-dodkit-force-fixed
-          title: DODKit 呼び出しは常に --force を付与する
-          reason: DODKit 導入結果を非対話で再現可能にするため MyDevSetup 側で --force を固定付与する
+          title: DODKit への引数は MyDevSetup 受領値をそのまま渡す
+          reason: DODKit 側の動作は固定せず、ユーザーが指定した引数を優先して透過委譲する
           status: "✅️Implementation Approved"
           sub_decisions: []
