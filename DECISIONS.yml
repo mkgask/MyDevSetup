@@ -135,3 +135,27 @@ decisions:
           reason: DODKit 側の動作は固定せず、ユーザーが指定した引数を優先して透過委譲する
           status: "✅️Implementation Approved"
           sub_decisions: []
+
+    - id: installer-008-console-log-format
+      title: install.sh の成功/警告/エラー出力は絵文字ラベルと色付き表示を行う
+      reason: >
+        ユーザー可読性向上のため、成功/警告/エラーの行は
+        それぞれ指定ラベルと指定色で視認可能にする。
+      status: "✅️Implementation Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-008-1-success-label-color
+          title: 成功ログは [✅️SUCCESS] を緑で表示
+          reason: 成功行を一目で識別可能にする
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-008-2-error-label-color
+          title: エラーログは [❌️ERROR] を赤で表示
+          reason: 失敗行を強調して判別しやすくする
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-008-3-warning-label-color
+          title: 警告ログは [⚠️WARNING] を黄で表示
+          reason: 要注意行を情報ログと区別する
+          status: "✅️Implementation Approved"
+          sub_decisions: []

@@ -39,16 +39,36 @@ log_info() {
 	printf '[INFO] %s\n' "$1"
 }
 
+supports_stdout_color() {
+	[[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]
+}
+
+supports_stderr_color() {
+	[[ -t 2 ]] && [[ -z "${NO_COLOR:-}" ]]
+}
+
 log_warning() {
-	printf '[WARNING] %s\n' "$1"
+	if supports_stdout_color; then
+		printf '\033[33m[⚠️WARNING] %s\033[0m\n' "$1"
+	else
+		printf '[⚠️WARNING] %s\n' "$1"
+	fi
 }
 
 log_error() {
-	printf '[ERROR] %s\n' "$1" >&2
+	if supports_stderr_color; then
+		printf '\033[31m[❌️ERROR] %s\033[0m\n' "$1" >&2
+	else
+		printf '[❌️ERROR] %s\n' "$1" >&2
+	fi
 }
 
 log_success() {
-	printf '[SUCCESS] %s\n' "$1"
+	if supports_stdout_color; then
+		printf '\033[32m[✅️SUCCESS] %s\033[0m\n' "$1"
+	else
+		printf '[✅️SUCCESS] %s\n' "$1"
+	fi
 }
 
 die() {
@@ -88,7 +108,11 @@ confirm_overwrite() {
 	local answer=""
 
 	if has_tty; then
-		printf '[WARNING] File exists: %s\n' "$destination_path" >/dev/tty
+		if [[ -z "${NO_COLOR:-}" ]]; then
+			printf '\033[33m[⚠️WARNING] File exists: %s\033[0m\n' "$destination_path" >/dev/tty
+		else
+			printf '[⚠️WARNING] File exists: %s\n' "$destination_path" >/dev/tty
+		fi
 		printf 'Overwrite this file? [y/N]: ' >/dev/tty
 		read -r answer </dev/tty || true
 
@@ -107,7 +131,11 @@ confirm_overwrite() {
 		return 1
 	fi
 
-	printf '[WARNING] File exists: %s\n' "$destination_path"
+	if supports_stdout_color; then
+		printf '\033[33m[⚠️WARNING] File exists: %s\033[0m\n' "$destination_path"
+	else
+		printf '[⚠️WARNING] File exists: %s\n' "$destination_path"
+	fi
 	printf 'Overwrite this file? [y/N]: '
 	read -r answer
 

@@ -186,3 +186,63 @@ Append rules:
 - Current conclusion: 本スコープの closeout 条件を満たした。
 - Promotion to DECISIONS.yml: none
 - Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）
+
+### Entry 0011 (2026-06-28T00:02:00Z)
+- Why now: ユーザー要求により、install.sh のコンソール出力に絵文字ラベルと色分けを導入する必要がある。
+- Findings / trade-offs:
+  - **広域スキャン結果（今回スコープ内）**:
+    - 現在の `install.sh` は `[SUCCESS]`/`[ERROR]`/`[WARNING]` の無色ラベルを使用している。
+    - `confirm_overwrite` 内では `printf` 直書きの WARNING ラベルがあり、ロガー関数とは別経路で出力される。
+  - **候補方針**:
+    - 成功は `[✅️SUCCESS]` を緑（ANSI 32）で表示。
+    - エラーは `[❌️ERROR]` を赤（ANSI 31）で表示。
+    - 警告は `[⚠️WARNING]` を黄（ANSI 33）で表示。
+    - 色付けは TTY 接続時のみ有効化し、`NO_COLOR` が設定されている場合は無色にフォールバックする。
+    - 直書き WARNING も同じラベル規約に合わせる。
+  - **意図的な非スコープ**: INFO ログの色付け、ログ収集用JSON化。
+- Current conclusion: 上記方針を binding として昇格し、実装へ進める。
+- Promotion to DECISIONS.yml: pending（Entry 0012 検証後）
+- Evidence / references (optional): ユーザー要求（成功/エラー/警告のラベルと色指定）
+
+### Entry 0012 (2026-06-28T00:02:01Z)
+- Why now: Gate A step 2（discussion-validation）— Entry 0011 の候補方針を実装前監査する。
+- Findings / trade-offs:
+  - **Landscape coverage**: ロガー関数経路と `confirm_overwrite` 直書き経路の両方を確認済み。
+  - **Focus justification**: 変更要求に直接関係する出力ラベルと色制御のみに限定しており妥当。
+  - **Directional fit**: ユーザー指定（成功=緑、エラー=赤、警告=黄）と一致。
+  - **Contract fit**: TTY/NO_COLOR 分岐を明示しても既存機能契約（処理結果）には影響しない。
+  - **Validation result**: PASS — 昇格可能。
+- Current conclusion: ログラベルと色制約を DECISIONS.yml に昇格し、実装へ進める。
+- Promotion to DECISIONS.yml: promoted -> installer-008-console-log-format
+- Evidence / references (optional): discussion-validation 手順（`.github/skills/discussion-validation/SKILL.md`）
+
+### Entry 0013 (2026-06-28T00:02:02Z)
+- Why now: Gate B（implementation）として、コンソール出力の絵文字ラベルと色制約を install.sh に実装する。
+- Findings / trade-offs:
+  - **実装内容**:
+    - `supports_stdout_color` と `supports_stderr_color` を追加し、TTY かつ `NO_COLOR` 未設定時のみ色付けするようにした。
+    - `log_success` を `[✅️SUCCESS]` + 緑に変更。
+    - `log_error` を `[❌️ERROR]` + 赤に変更（stderr 出力維持）。
+    - `log_warning` を `[⚠️WARNING]` + 黄に変更。
+    - `confirm_overwrite` 内の直書き WARNING 表示も同ラベル/同色規約に合わせた。
+  - **設計上の境界**:
+    - INFO ログは無変更。
+    - 色表現は表示層のみであり、制御フロー・終了コードには影響しない。
+- Current conclusion: 実装は decision contract（installer-008）と整合。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): install.sh 変更差分
+
+### Entry 0014 (2026-06-28T00:02:03Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として出力仕様変更を検証する。
+- Findings / trade-offs:
+  - **Deterministic checks**:
+    - `bash -n install.sh` PASS
+    - `source ./install.sh; log_success/log_warning/log_error` 実行でラベルがそれぞれ `[✅️SUCCESS]` / `[⚠️WARNING]` / `[❌️ERROR]` になることを確認
+    - ファイル内実装確認で ANSI 色コード（緑32/黄33/赤31）が対応ログに適用されることを確認
+  - **Artifact alignment**:
+    - `DECISIONS.yml` の installer-008 と `install.sh` 実装が一致。
+  - **Remaining risk**:
+    - 出力が非TTYまたは `NO_COLOR` 指定時は無色表示となる（意図したフォールバック）。
+- Current conclusion: 本スコープの closeout 条件を満たした。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）
