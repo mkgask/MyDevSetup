@@ -62,6 +62,7 @@ Before reporting completion:
 - DECISIONS.yml is the canonical set of project decision objects: keep each decision entry concise and keep the file current.
 - The classification rule is implementation constraint, not perceived importance.
 - Decision entries should stay concise, but decisions that matter to implementation should not be omitted.
+- Use `decision` as the descriptive field in each decision object, and write the currently active implementation constraint in that field.
 - Keep DECISIONS.yml sustainable across ongoing development so the next decision does not require rereading broad historical context.
 - Keep top-level categories oriented around concern areas or domains. Treat specification, design, implementation strategy, and test obligations as decisions or sub-decisions inside the relevant category when they independently constrain work.
 - Use the default statuses whenever possible: `⚠️Discussion In Progress`, `⚠️Discussion Approved`, `⚠️Implementing`, `✅️Implementation Approved`. Use exceptional statuses only when reality requires them.

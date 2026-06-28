@@ -30,7 +30,7 @@ Its job is to derive the intended target shape from the active decision set and 
 6. Validate at meaningful checkpoints.
    Run the focused behavior check, targeted test, or narrow compile/lint/typecheck after each meaningful integration step, especially after the first substantive edit.
 7. Keep records current when new facts matter.
-   If implementation reveals a new binding constraint or a materially decision-relevant fact, append it to `records/{discussion-id}.md` and promote the constraint to `DECISIONS.yml` in the same change set.
+   If implementation reveals a new binding constraint or a materially decision-relevant fact, append it to `records/{discussion-id}.md` and promote the constraint to `DECISIONS.yml` in the same change set. Use the single `decision` field when creating or updating decision entries.
 8. Stop before closeout.
    Hand the result to implementation-validation rather than declaring completion here.
 

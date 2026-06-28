@@ -20,7 +20,7 @@ Its job is to convert a validated discussion result into explicit active decisio
 1. Confirm validation passed.
    Start only after discussion-validation has explicitly accepted the direction and identified what must be promoted or updated.
 2. Choose the correct decision shape.
-   Decide whether the result belongs in an existing decision, a new decision object, or one or more sub-decisions. Split overloaded decisions instead of hiding multiple active rules in one node.
+   Decide whether the result belongs in an existing decision, a new decision object, or one or more sub-decisions. Split overloaded decisions instead of hiding multiple active rules in one node. Keep descriptive content in the single `decision` field.
 3. Promote every newly binding rule.
    Move all implementation-critical constraints from the validated result into `DECISIONS.yml`. Do not leave active rules only in `records/{discussion-id}.md`.
 4. Complete the decision contract.
@@ -36,6 +36,7 @@ Its job is to convert a validated discussion result into explicit active decisio
 - Do not start promotion if discussion-validation is ambiguous or failed.
 - Do not hide new active constraints only in narrative prose.
 - Do not overload one decision when the rules should be separate decision objects or sub-decisions.
+- Do not reintroduce multi-field descriptive splits in promoted decision entries.
 - Keep `DECISIONS.yml` concise, but not at the cost of omitting rules that would let implementation drift.
 
 ## Completion Criteria
