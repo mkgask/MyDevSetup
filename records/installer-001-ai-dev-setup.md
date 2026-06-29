@@ -246,3 +246,105 @@ Append rules:
 - Current conclusion: 本スコープの closeout 条件を満たした。
 - Promotion to DECISIONS.yml: none
 - Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）
+
+### Entry 0015 (2026-06-29T00:00:00Z)
+- Why now: ユーザー要求により、AGENTS.md 配布に加えて `templates/.docs/PRINCIPLES.md` を `.docs/PRINCIPLES.md` へ配布する必要がある。
+- Findings / trade-offs:
+  - **広域スキャン結果（今回スコープ内）**:
+    - 現在の `install.sh` は `templates/AGENTS.md -> AGENTS.md` のみを扱い、`PRINCIPLES.md` の配布処理は未実装。
+    - 配布元ファイルは `templates/.docs/PRINCIPLES.md` に存在する。
+    - 既存の上書きポリシー（既定保護、`--force` 指定時のみ上書き）を AGENTS.md だけに適用している。
+  - **候補方針**:
+    - `PRINCIPLES.md` も MyDevSetup アセットとして install.sh で配布対象に追加する。
+    - コピー元を `templates/.docs/PRINCIPLES.md`、配置先を `.docs/PRINCIPLES.md` に固定する。
+    - 競合時ポリシーは AGENTS.md と統一し、既定保護＋`--force` 指定時のみ上書きを許可する。
+    - 配置先ディレクトリ `.docs/` が未存在の場合は install.sh 側で作成する。
+  - **discussion-validation 結果**:
+    - Coverage: 配布元/配布先パス、上書き境界、既存 `--force` 契約との整合を確認済み。
+    - Directional fit: ユーザー要求（PRINCIPLES の同梱配布）と一致。
+    - Contract fit: 既存のファイル保護契約を維持しつつ対象ファイルを拡張するのみで、既存 decision と衝突しない。
+    - Validation result: PASS — DECISIONS.yml へ昇格可能。
+- Current conclusion: `PRINCIPLES.md` 配布制約を DECISIONS.yml に昇格後、install.sh 実装へ進む。
+- Promotion to DECISIONS.yml: pending（本エントリに基づき昇格）
+- Evidence / references (optional): ユーザー要求（PRINCIPLES.md 配布追加）
+
+### Entry 0016 (2026-06-29T00:00:01Z)
+- Why now: Gate B（implementation）として、promoted 済み decision（installer-009）に従い install.sh へ PRINCIPLES.md 配布処理を追加する。
+- Findings / trade-offs:
+  - **実装内容**:
+    - `templates/.docs/PRINCIPLES.md` を扱う source path と `.docs/PRINCIPLES.md` を扱う destination path を追加。
+    - テンプレート取得処理を汎用化し、`install_template_asset` を導入して AGENTS.md と PRINCIPLES.md の配布処理を共通化。
+    - `.docs/` が未存在でも配布できるように `mkdir -p` で親ディレクトリを作成。
+    - 既存ファイル競合時は既存契約を踏襲し、`--force` 指定時のみ上書きを許可。
+    - `--help` の説明文を AGENTS + PRINCIPLES 配布契約に合わせて更新。
+  - **設計上の境界**:
+    - DODKit 呼び出し契約（引数透過、実行順）は変更なし。
+    - AGENTS/PRINCIPLES 配布層の責務拡張に限定し、ターゲット判定ロジックには手を入れていない。
+- Current conclusion: 実装は installer-009 系 decision contract と整合。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): install.sh 変更差分
+
+### Entry 0017 (2026-06-29T00:00:02Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、PRINCIPLES 配布追加の実行検証と artifact 整合を確認する。
+- Findings / trade-offs:
+  - **Deterministic checks**:
+    - `bash -n install.sh` PASS
+    - 一時ディレクトリで `source ./install.sh; FORCE_OVERWRITE=1; install_agents_template; install_principles_template` 実行 PASS（`AGENTS.md` と `.docs/PRINCIPLES.md` の生成を確認）
+    - 一時ディレクトリで既存ファイルを作成後、TTY なし実行（`setsid`）かつ `FORCE_OVERWRITE=0` で両ファイルが保持されることを確認 PASS
+  - **Artifact alignment**:
+    - `DECISIONS.yml` の installer-009 / sub-decisions と install.sh 実装が一致。
+  - **Remaining risk**:
+    - `main` フローで DODKit まで含めた end-to-end 実行はネットワーク依存のため今回未実施（ローカル関数単位で対象スコープを検証）。
+- Current conclusion: 本スコープの closeout 条件を満たした。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）
+
+### Entry 0018 (2026-06-30T00:00:00Z)
+- Why now: 配布ファイル増加に備え、配布元/配置先を定数リストで管理し、install.sh の配布処理をループ化する必要がある。
+- Findings / trade-offs:
+  - **広域スキャン結果（今回スコープ内）**:
+    - 現在の実装は `install_template_asset` までは共通化できているが、`install_agents_template` と `install_principles_template` の呼び分けが個別で増える。
+    - 新規配布ファイルを追加するたびに、定数追加 + 関数追加 + `main` への呼び出し追加が必要となり変更点が散らばる。
+  - **候補方針**:
+    - 配布契約を `source|destination|asset-name` のリストとして1箇所に集約する。
+    - `main` は個別呼び出しをやめ、リストをループして `install_template_asset` を実行する。
+    - 既存の上書き契約（既定保護、`--force` 指定時のみ上書き）は変更しない。
+  - **discussion-validation 結果**:
+    - Coverage: 変更対象は配布制御層のみで、DODKit 委譲やログ契約には影響しないことを確認。
+    - Directional fit: ユーザー要望（効率的で管理しやすい構成）と一致。
+    - Contract fit: installer-005 / installer-009 の配布パス契約を維持したまま実装方式だけを改善するため、既存 decision と衝突しない。
+    - Validation result: PASS — DECISIONS.yml へ昇格可能。
+- Current conclusion: 配布アセットリスト + ループ実行の実装方式を DECISIONS.yml に昇格後、install.sh を更新する。
+- Promotion to DECISIONS.yml: pending（本エントリに基づき昇格）
+- Evidence / references (optional): ユーザー要求（配布元とコピー先のリスト管理）
+
+### Entry 0019 (2026-06-30T00:00:01Z)
+- Why now: Gate B（implementation）として、配布管理をリスト化し loop 実行へ置き換える。
+- Findings / trade-offs:
+  - **実装内容**:
+    - `DEPLOYMENT_ASSET_SPECS` を追加し、`source|destination|asset-name` の3要素で配布定義を集約。
+    - `install_template_assets` を追加し、配布定義をループして `install_template_asset` を実行。
+    - 既存の `install_agents_template` / `install_principles_template` を削除して `main` からはループ関数のみ呼び出す構成へ変更。
+    - spec 破損時の早期失敗（3要素不足検出）を追加。
+  - **設計上の境界**:
+    - 実配布ロジック本体（`install_template_asset`）は維持し、配布制御の入口だけを置換。
+    - DODKit 実行契約、上書き契約、ログ契約は変更なし。
+- Current conclusion: 実装は installer-010 の decision contract と整合。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): install.sh 変更差分
+
+### Entry 0020 (2026-06-30T00:00:02Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、ループ化後の挙動と契約整合を検証する。
+- Findings / trade-offs:
+  - **Deterministic checks**:
+    - `bash -n install.sh` PASS
+    - 一時ディレクトリで `source ./install.sh; FORCE_OVERWRITE=1; install_template_assets` 実行 PASS（`AGENTS.md` と `.docs/PRINCIPLES.md` の生成を確認）
+    - 一時ディレクトリで既存ファイルを作成後、TTY なし実行（`setsid`）かつ `FORCE_OVERWRITE=0` で両ファイル保持を確認 PASS
+    - `get_errors` で install.sh に diagnostics がないことを確認
+  - **Artifact alignment**:
+    - installer-005 / installer-009 の配布パス契約と installer-010 の方式契約が install.sh 実装と一致。
+  - **Remaining risk**:
+    - DODKit を含むネットワーク依存の end-to-end 実行は今回スコープ外（配布制御層のみ検証）。
+- Current conclusion: 本スコープの closeout 条件を満たした。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）

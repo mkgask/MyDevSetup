@@ -14,148 +14,159 @@ decisions:
 
   Installer:
     - id: installer-001-project-scope
-      title: AI 利用開発環境の標準汎用インストーラーを提供する
-      reason: >
-        本リポジトリ（MyDevSetup）の主目的は、対象プロジェクトへ AI 開発環境アセットを
-        一括配布する curl|bash 実行可能なインストーラーを提供すること。
+      decision: >
+        本リポジトリは、対象プロジェクトへ AI 開発環境アセットを一括配布する
+        curl -fsSL ... | bash 実行可能な標準汎用インストーラーを提供する。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions: []
 
     - id: installer-002-templates-agents-md
-      title: templates/AGENTS.md をコピー元テンプレートとして配置する
-      reason: >
-        インストール時の AGENTS.md 配布元は templates/ 配下に置く。
-        初期リリースでは中身空のファイルでよい。
+      decision: >
+        インストール時に配布する AGENTS.md のコピー元は templates/AGENTS.md に固定し、
+        初期リリースでは内容定義を持たない空テンプレートを許容する。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-002-1-initial-empty
-          title: 初期 AGENTS.md テンプレートは空ファイル
-          reason: AGENTS.md の内容定義は別議論とし、インストーラー MVP では空テンプレートをコピーするのみ
+          decision: AGENTS.md の内容定義は別議論とし、MVP では空ファイルのテンプレートをコピーする。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-003-install-sh-distribution
-      title: ルート install.sh を curl|bash で直接実行可能にする
-      reason: >
-        リポジトリルートの install.sh を raw.githubusercontent.com 経由の
-        curl -fsSL ... | bash 形式で配布・実行できること。
+      decision: >
+        リポジトリルートの install.sh は raw.githubusercontent.com 経由で取得し、
+        curl -fsSL ... | bash 形式で直接実行可能にする。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-003-1-curl-pattern
-          title: 配布は curl -fsSL と bash パイプ形式
-          reason: DODKit と同様のワンライナーインストール UX を採用する
+          decision: DODKit と同等のワンライナー UX として curl -fsSL と bash パイプ形式を採用する。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-003-2-installer-source
-          title: MyDevSetup install.sh の取得元表記は mkgask/mydevsetup main
-          reason: >
-            運用上の正規表記として
+          decision: >
+            MyDevSetup install.sh の配布 URL は
             https://raw.githubusercontent.com/mkgask/mydevsetup/main/install.sh
-            を配布URLに採用する
+            を正規表記として扱う。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-003-3-default-target
-          title: install.sh のターゲット既定値は copilot
-          reason: ターゲット未指定時の実行契約は DODKit と同様に copilot 既定へ揃える
+          decision: ターゲット未指定時の install.sh 既定値は DODKit と揃えて copilot とする。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-004-supported-targets
-      title: 対象 AI ツールは Copilot と Cursor のみ
-      reason: >
-        インストーラーが扱うエディタ/AI ターゲットは GitHub Copilot と Cursor に限定する。
-        他ツール向け分岐は初期スコープ外。
+      decision: >
+        インストーラーが扱う AI ツールは GitHub Copilot と Cursor のみに限定し、
+        それ以外のターゲット分岐は初期スコープ外とする。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-004-1-non-goals-other-ai
-          title: 非目標 — Copilot/Cursor 以外の AI ツール対応
-          reason: 初期 MVP では copilot/cursor 以外のターゲット分岐を実装しない
+          decision: 非目標として Copilot/Cursor 以外への対応分岐は MVP で実装しない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-005-agents-md-deploy
-      title: AGENTS.md はプロジェクトルートへ配置する（ターゲット共通）
-      reason: >
-        Copilot も Cursor も AGENTS.md の配置先はプロジェクトルートのみ。
-        ターゲット別の追加配置や内容分岐は初期スコープ外。
+      decision: >
+        Copilot/Cursor いずれのターゲットでも AGENTS.md の配置先はプロジェクトルートのみとし、
+        ターゲット別の追加配置や内容分岐は行わない。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-005-1-copy-from-templates
-          title: AGENTS.md は templates/AGENTS.md からルートへコピー
-          reason: 配布物 AGENTS.md の生成元は templates/AGENTS.md に固定する
+          decision: 配布する AGENTS.md は templates/AGENTS.md からルートへコピーする。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-005-2-agents-overwrite
-          title: MyDevSetup の --force は AGENTS.md 上書き判定にのみ適用する
-          reason: AGENTS.md の競合時は既定で保護し、--force 指定時のみ上書きを許可する
+          decision: AGENTS.md 競合時は既定で保護し、MyDevSetup の --force 指定時のみ上書きを許可する。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-006-dodkit-bundled
-      title: インストーラーは DODKit のインストールも実施する
-      reason: >
-        MyDevSetup の install.sh 実行時に、選択ターゲット向け DODKit アセットの
-        インストールも行う。DODKit 単体インストールに置き換えない。
+      decision: >
+        MyDevSetup の install.sh 実行では、選択ターゲット向け DODKit アセットの導入も必須とし、
+        MyDevSetup を DODKit 単体インストールへ置き換えない。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions: []
 
     - id: installer-007-dodkit-invocation
-      title: DODKit には MyDevSetup が受け取った引数を透過委譲する
-      reason: >
-        MyDevSetup install.sh は DODKit install.sh の振る舞いを固定化せず、
-        受領した引数列をそのまま `bash -s -- ...` で委譲する。
+      decision: >
+        MyDevSetup install.sh は DODKit install.sh の動作を固定化せず、
+        受領した引数列を `bash -s -- ...` で透過委譲する。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-007-1-dodkit-source
-          title: DODKit 取得元は mkgask/dodkit main の install.sh
-          reason: >
-            curl -fsSL https://raw.githubusercontent.com/mkgask/dodkit/main/install.sh
-            をパイプ先 bash に -s -- <target> --force を渡して実行する
+          decision: >
+            DODKit の取得元は
+            https://raw.githubusercontent.com/mkgask/dodkit/main/install.sh
+            に固定する。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-007-2-target-args
-          title: ターゲット引数は copilot または cursor
-          reason: DODKit install.sh の CLI 契約（copilot|cursor）に合わせる
+          decision: DODKit へ渡すターゲット引数は copilot または cursor のみを許可する。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-007-3-decisions-protected
-          title: DODKit による DECISIONS.yml 上書きは行わない
-          reason: DODKit は DECISIONS.yml を上書き保護対象とする。既存プロジェクト決定を失わない
+          decision: DODKit 実行時も DECISIONS.yml は上書き保護対象とし、既存決定を失わせない。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-007-4-dodkit-force-fixed
-          title: DODKit への引数は MyDevSetup 受領値をそのまま渡す
-          reason: DODKit 側の動作は固定せず、ユーザーが指定した引数を優先して透過委譲する
+          decision: DODKit への引数は MyDevSetup が受領した値を改変せずそのまま渡す。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-008-console-log-format
-      title: install.sh の成功/警告/エラー出力は絵文字ラベルと色付き表示を行う
-      reason: >
-        ユーザー可読性向上のため、成功/警告/エラーの行は
-        それぞれ指定ラベルと指定色で視認可能にする。
+      decision: >
+        install.sh の成功・警告・エラー行は、指定ラベルと指定色で視認可能に表示し、
+        可読性を高めるログ契約を維持する。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
       sub_decisions:
         - id: installer-008-1-success-label-color
-          title: 成功ログは [✅️SUCCESS] を緑で表示
-          reason: 成功行を一目で識別可能にする
+          decision: 成功ログは [✅️SUCCESS] ラベルを緑色で表示する。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-008-2-error-label-color
-          title: エラーログは [❌️ERROR] を赤で表示
-          reason: 失敗行を強調して判別しやすくする
+          decision: エラーログは [❌️ERROR] ラベルを赤色で表示する。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-008-3-warning-label-color
-          title: 警告ログは [⚠️WARNING] を黄で表示
-          reason: 要注意行を情報ログと区別する
+          decision: 警告ログは [⚠️WARNING] ラベルを黄色で表示する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+    - id: installer-009-principles-md-deploy
+      decision: >
+        install.sh は AGENTS.md 配布に加えて
+        templates/.docs/PRINCIPLES.md を .docs/PRINCIPLES.md へ配布する。
+      status: "✅️Implementation Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-009-1-principles-path-contract
+          decision: PRINCIPLES.md のコピー元は templates/.docs/PRINCIPLES.md、配置先は .docs/PRINCIPLES.md に固定する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-009-2-principles-overwrite
+          decision: .docs/PRINCIPLES.md 競合時は既定で保護し、MyDevSetup の --force 指定時のみ上書きを許可する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+    - id: installer-010-asset-list-loop
+      decision: >
+        install.sh の配布アセット管理は、配布元・配置先・表示名を持つ定数リストへ集約し、
+        配布処理はそのリストをループして実行する。
+      status: "✅️Implementation Approved"
+      link: "records/installer-001-ai-dev-setup.md"
+      sub_decisions:
+        - id: installer-010-1-list-contract
+          decision: 配布アセットの定義は source path / destination path / asset name の3要素で保持する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-010-2-loop-install
+          decision: main は個別インストール関数を呼ばず、定義済みアセットリストのループで install_template_asset を呼び出す。
           status: "✅️Implementation Approved"
           sub_decisions: []

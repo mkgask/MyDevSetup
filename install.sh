@@ -9,11 +9,14 @@ PASSTHROUGH_ARGS=()
 
 SOURCE_REPOSITORY="mkgask/mydevsetup"
 SOURCE_REF="main"
-SOURCE_TEMPLATE_PATH="templates/AGENTS.md"
 SOURCE_TEMPLATE_URL_BASE="https://raw.githubusercontent.com"
 
 DODKIT_INSTALLER_URL="https://raw.githubusercontent.com/mkgask/dodkit/main/install.sh"
-DESTINATION_AGENTS_PATH="AGENTS.md"
+
+DEPLOYMENT_ASSET_SPECS=(
+	"templates/AGENTS.md|AGENTS.md|AGENTS.md"
+	"templates/.docs/PRINCIPLES.md|.docs/PRINCIPLES.md|PRINCIPLES.md"
+)
 
 print_usage() {
 	cat <<'USAGE'
@@ -21,7 +24,7 @@ Usage:
 	install.sh [arguments-for-dodkit]
 
 Description:
-	Install MyDevSetup assets and then run DODKit installer.
+	Install MyDevSetup assets (AGENTS.md and .docs/PRINCIPLES.md) and then run DODKit installer.
 	Arguments are forwarded to DODKit as-is.
 
 Examples:
@@ -30,7 +33,7 @@ Examples:
 	install.sh cursor --force
 
 Options:
-	--force                Also used locally to overwrite AGENTS.md when it already exists.
+	--force                Also used locally to overwrite AGENTS.md and .docs/PRINCIPLES.md when they already exist.
 	-h, --help             Show this help and DODKit help.
 USAGE
 }
@@ -167,10 +170,13 @@ parse_args() {
 }
 
 build_template_source_url() {
-	printf '%s/%s/%s/%s' "$SOURCE_TEMPLATE_URL_BASE" "$SOURCE_REPOSITORY" "$SOURCE_REF" "$SOURCE_TEMPLATE_PATH"
+	local source_template_path="$1"
+
+	printf '%s/%s/%s/%s' "$SOURCE_TEMPLATE_URL_BASE" "$SOURCE_REPOSITORY" "$SOURCE_REF" "$source_template_path"
 }
 
 resolve_local_template_path() {
+	local source_template_path="$1"
 	local script_path="${BASH_SOURCE[0]:-$0}"
 	local script_directory=""
 	local candidate_path=""
@@ -185,7 +191,7 @@ resolve_local_template_path() {
 		return 1
 	fi
 
-	candidate_path="$script_directory/$SOURCE_TEMPLATE_PATH"
+	candidate_path="$script_directory/$source_template_path"
 
 	if [[ -f "$candidate_path" ]]; then
 		printf '%s' "$candidate_path"
@@ -196,16 +202,17 @@ resolve_local_template_path() {
 }
 
 download_template_to_file() {
-	local output_path="$1"
+	local source_template_path="$1"
+	local output_path="$2"
 	local source_url=""
 	local local_template_path=""
 
-	if local_template_path="$(resolve_local_template_path)"; then
+	if local_template_path="$(resolve_local_template_path "$source_template_path")"; then
 		cp "$local_template_path" "$output_path"
 		return 0
 	fi
 
-	source_url="$(build_template_source_url)"
+	source_url="$(build_template_source_url "$source_template_path")"
 
 	if ! curl --proto '=https' --tlsv1.2 -fsSL "$source_url" -o "$output_path"; then
 		return 1
@@ -214,27 +221,42 @@ download_template_to_file() {
 	return 0
 }
 
-install_agents_template() {
-	local destination_path="$DESTINATION_AGENTS_PATH"
+ensure_parent_directory_exists() {
+	local destination_path="$1"
+	local parent_directory=""
+
+	parent_directory="$(dirname "$destination_path")"
+
+	if [[ "$parent_directory" == "." ]]; then
+		return 0
+	fi
+
+	mkdir -p "$parent_directory"
+}
+
+install_template_asset() {
+	local source_template_path="$1"
+	local destination_path="$2"
+	local asset_name="$3"
 	local temporary_file=""
 
 	temporary_file="$(mktemp)"
 
-	if ! download_template_to_file "$temporary_file"; then
+	if ! download_template_to_file "$source_template_path" "$temporary_file"; then
 		rm -f "$temporary_file"
-		die "Failed to download template: $(build_template_source_url)"
+		die "Failed to download template: $(build_template_source_url "$source_template_path")"
 	fi
 
 	if path_has_symlink_component "$destination_path"; then
 		rm -f "$temporary_file"
-		die "Refusing to write AGENTS.md through symlink path: $destination_path"
+		die "Refusing to write through symlink path: $destination_path"
 	fi
 
 	if [[ -f "$destination_path" ]]; then
 
 		if cmp -s "$temporary_file" "$destination_path"; then
 			rm -f "$temporary_file"
-			log_info "AGENTS.md is already up-to-date"
+			log_info "$asset_name is already up-to-date"
 			return 0
 		fi
 
@@ -245,10 +267,28 @@ install_agents_template() {
 		fi
 	fi
 
+	ensure_parent_directory_exists "$destination_path"
 	cp "$temporary_file" "$destination_path"
 	chmod 0644 "$destination_path"
 	rm -f "$temporary_file"
 	log_success "Installed: $destination_path"
+}
+
+install_template_assets() {
+	local asset_spec=""
+	local source_template_path=""
+	local destination_path=""
+	local asset_name=""
+
+	for asset_spec in "${DEPLOYMENT_ASSET_SPECS[@]}"; do
+		IFS='|' read -r source_template_path destination_path asset_name <<< "$asset_spec"
+
+		if [[ -z "$source_template_path" ]] || [[ -z "$destination_path" ]] || [[ -z "$asset_name" ]]; then
+			die "Invalid deployment asset spec: $asset_spec"
+		fi
+
+		install_template_asset "$source_template_path" "$destination_path" "$asset_name"
+	done
 }
 
 run_dodkit_installer() {
@@ -268,6 +308,7 @@ main() {
 	require_command "cmp"
 	require_command "cp"
 	require_command "dirname"
+	require_command "mkdir"
 
 	if [[ "$SHOW_HELP" -eq 1 ]]; then
 		print_usage
@@ -276,7 +317,7 @@ main() {
 	fi
 
 	log_info "Starting MyDevSetup installer source=${SOURCE_REPOSITORY}@${SOURCE_REF}"
-	install_agents_template
+	install_template_assets
 	run_dodkit_installer "${PASSTHROUGH_ARGS[@]}"
 	log_success "MyDevSetup installer finished"
 }
