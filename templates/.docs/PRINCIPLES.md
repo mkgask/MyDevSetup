@@ -67,3 +67,16 @@ However, anything that should be ethically prohibited remains prohibited regardl
 - If additional domains are required for testing, use `.test` as the TLD.
 
 
+
+---
+# Logs
+
+- System logs and operation logs are output to the same directory, distinguished by the prefixes `sys_` and `op_`.
+- `debug` and `warning` levels go to the system log; `info` goes to the operation log; `error` goes to both.
+- Logs are output simultaneously to the console and files; log separation applies only to files, while the console displays all logs.
+- The standard log format is `[<datetime>] [<loglevel>] <logmessage>`.
+- Include emojis in the log level: ⚪️DEBUG, ✅️ INFO, ⚠️WARNING, ❌️ERROR.
+- Log rotation deletes old files when the retention period exceeds one month or the file count exceeds 1024.
+- Log rotation must be toggleable (ON/OFF), allowing it to be disabled during development and enabled in production.
+
+
