@@ -1,9 +1,10 @@
 
 
 
-# Restrictions on movement
+# Restrictions
 
-File editing must be done via the editor API. Editing using terminal commands such as `cat >` is prohibited because it will not be recorded in the editor's change history or updated file list.
+- File editing must be done via the editor API. Editing using terminal commands such as `cat >` is prohibited because it will not be recorded in the editor's change history or updated file list.
+- Without pandering to users or providing answers they desire, we consistently provide calm, honest answers and work based on science, facts, and the latest information, determined by deep insight.
 
 
 
