@@ -170,3 +170,144 @@ decisions:
           decision: main は個別インストール関数を呼ばず、定義済みアセットリストのループで install_template_asset を呼び出す。
           status: "✅️Implementation Approved"
           sub_decisions: []
+
+
+  dev-tools:
+    - id: installer-011-optional-tool-installation
+      decision: >
+        install.sh の開発用ツール導入フローは Linux/WSL で不足している汎用CLIを任意導入できるようにし、
+        既存の AGENTS.md 本文を保護したまま導入成功した新規ツールを処理の最後に記録する。
+        既定の install モードはCLI本体の導入だけとし、AI連携設定やプロジェクト索引作成を自動化しない。
+        明示的な init モードでは、導入済みで現在プロジェクトの利用に初期設定が必要なツールについて、公式のプロジェクト設定を実行できる。
+      status: "✅️Implementation Approved"
+      link: "records/dev-tools-001-optional-tool-installation.md"
+      sub_decisions:
+        - id: installer-011-1-tool-order-and-prompt
+          decision: >
+            不足時の確認対象は python、ruby、rg、rtk、codegraph の順とし、存在するツールは質問せず、
+            未導入のツールだけを各一回ずつの導入方法選択で確認する。選択肢はツールごとの対応表から生成し、
+            codegraph の実行コマンド名は codegraph とする。空入力時の既定導入方法はツールごとに固定する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-2-installation-backends
+          decision: >
+            対応環境は Linux/WSL に限定し、導入方法は対象ツールを扱える既存の system、nix、proto、mise、asdf、
+            official の経路から選ぶ。nix、proto、mise、asdf は実行可能なコマンドと対象ツールの対応を検出できた場合だけ候補にし、
+            system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。マネージャー本体や不足プラグインは自動導入しない。
+            --global では全プロジェクトから利用可能な導入先を持つ経路だけを候補にし、該当経路がなければ skip とする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-3-command-and-version-contract
+          decision: >
+            python3 は Python の導入済みコマンドとして受け入れ、AGENTS.md には実際に検証できたコマンド名を記載する。
+            選択された導入経路は各経路の最新安定版を既定とし、公式インストーラーが対応するツールでは official も選択肢にする。
+            公式の環境変数等によるバージョン固定を妨げず、導入後は実際に検証できた実行コマンドを記録する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-4-third-party-cli-scope
+          decision: >
+            既定の install モードでは rtk と codegraph を含む対象ツールのCLI本体だけを配置し、rtk init、codegraph install、codegraph init などの初期設定を自動実行しない。
+            明示的な init モードでは、現在プロジェクトで利用するために必要な公式の初期設定をツールごとに実行できる。
+            ~/.local/bin のためにシェル設定ファイルを変更せず、導入先の検証に必要なPATH調整は今回の実行中に限定する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-5-failure-and-noninteractive-policy
+          decision: >
+            install の空入力はそのツールに設定された既定導入方法を選択し、TTYがない実行では任意ツールをスキップする。
+            init は明示指定自体を同意とみなし、ツールごとの追加確認を行わず、利用可能で初期設定が必要なツールだけを処理する。
+            install と init の個別失敗では後続ツールを継続し、処理末尾に成功・失敗・スキップをまとめて表示する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-6-agents-tool-record
+          decision: >
+            install で導入に成功した新規ツールのうち AGENTS.md に未記載のものだけを、全ツール処理の最後に管理ブロックとして冪等に追記する。
+            これは既存本文を変更しない add-only 操作として --force なしでも許可し、既存のテンプレート全体上書き保護は維持する。
+            管理ブロックが既にあれば同ブロックだけを更新し、細かな説明は追加しない。明示的な init では、公式ツールが現在プロジェクトで通常行う設定変更をこの install の記録処理とは別に許可する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-7-dev-tools-helper-boundary
+          decision: >
+            ツール検出・対話・導入・結果集計・AGENTS.md管理ブロック追記の実装は templates/dev-tools.sh に分離する。
+            install.sh はこの補助スクリプトを配布し、bash で実行するオーケストレーターに留める。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-8-install-method-selection
+          decision: >
+            各ツールの選択肢には対応表で利用可能と判定された導入方法だけを表示し、常に skip を含める。
+            未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。
+            system は Python・Ruby・rg の既存標準経路を既定とし、rtk・codegraph は official を既定とするが、利用可能な別経路を同じ1回の選択で選べる。
+            選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-9-helper-destination
+          decision: >
+            dev-tools.sh の標準配置先は対象プロジェクトの .dev/dev-tools.sh とする。.dev/ が未存在なら確認なしで作成し、
+            既存の .dev/ ディレクトリがある場合だけ配置先ディレクトリを尋ねる。空入力は .dev/ と解釈し、配置先の dev-tools.sh は上書きする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-10-helper-first-integration
+          decision: >
+            templates/dev-tools.sh の単体実装と挙動検証を先に完了し、その後に install.sh の配布アセット追加と bash による実行委譲を実装する。
+            install.sh の既存アセット保護、DODKit 引数透過、DODKit と AGENTS.md 管理ブロックの処理順序は維持する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-11-process-scoped-manager-activation
+          decision: >
+            通常の install でマネージャー導入後の検証に必要なPATH変更は現在のinstall.shプロセス内だけに限定し、シェル起動ファイルや
+            protoのグローバルpinなどの永続設定を追加しない。--global の install では、全プロジェクトから利用可能な導入経路の検証に必要な一時的PATH・manager activationの拡張だけを許可し、
+            shell起動ファイル、manager設定全体、agent設定の永続変更は行わない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-12-test-file-naming
+          decision: >
+            開発用テストの標準ファイル名は tests/dev-tools.test.sh と tests/install.test.sh とし、テスト実行コマンドや参照箇所もこの名前へ同期する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-13-logging-and-data-output
+          decision: >
+            templates/dev-tools.sh のユーザー向け warning、error、success は install.sh と同じラベル、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けで出力し、成功状態には log_success を使う。
+            ログではないコマンド置換の戻り値、プロンプト、構造化サマリー、AGENTS.mdやfixtureの内容生成は log_* に変換せず、必要に応じてデータ出力関数へ分離する。
+            テストのfixture生成や診断出力は本番ログ契約と混同しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-14-global-install-scope
+          decision: >
+            --global は install モードで導入したバイナリを全プロジェクトから利用可能にする導入スコープだけを表し、initの適用範囲、manager設定全体の永続化、agent設定のglobal適用は含めない。
+            --global の候補はそのスコープを実現できる導入経路だけに限定し、init --global はエラーとする。protoのグローバルpin、shell起動ファイル変更、manager設定の永続変更は --global でも行わない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-15-mode-selection
+          decision: >
+            補助スクリプトは dev-tools.sh [install|init] [--global] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行う。
+            --global は install との組み合わせだけを許可し、init との組み合わせは明示的な引数エラーとする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-16-project-init-scope
+          decision: >
+            明示的な init は不足バイナリを導入せず、現在プロジェクトで利用可能かつ初期設定が必要なツールについて、公式CLIが通常行うプロジェクト単位の設定を追加確認なしで実行する。
+            初期設定不要または未導入のツールはスキップし、公式手順が必要とする現在プロジェクトのAGENTS.md・agent設定・プロジェクト索引などの変更は許可するが、globalな設定や他プロジェクトへの適用は行わない。
+            個別の初期設定失敗では後続ツールを継続し、初期設定が安全に非対話実行できない場合は無理に実行せず失敗またはスキップとして記録する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-17-failure-diagnostics
+          decision: >
+            install と init の外部コマンド失敗は後続ツールの処理を継続しつつ、対象ツールの結果に終了コードと実行コマンドを記録し、補助スクリプト全体は失敗を反映した非0を返す。
+            DEV_TOOLS_DEBUG=1 のときは外部install/initコマンドを実行前に stderr へ追跡出力し、通常時の標準出力・標準エラーのログ契約を変更しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []

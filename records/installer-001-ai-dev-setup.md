@@ -348,3 +348,64 @@ Append rules:
 - Current conclusion: 本スコープの closeout 条件を満たした。
 - Promotion to DECISIONS.yml: none
 - Evidence / references (optional): implementation-validation 手順（`.github/skills/implementation-validation/SKILL.md`）
+
+### Entry 0021 (2026-07-18T12:19:55Z)
+- Why now: 開発環境に不足している汎用CLIとAI開発支援CLIを、利用者の確認付きで任意導入できるようにする次期スコープを議論する。
+- Findings / trade-offs:
+  - **対象と順序**: 不足時に `python`、`ruby`、`rg`、`rtk`、`codegraph` の順で確認し、存在するツールは質問せず、未導入のツールだけを1件ずつ `[Y/n]` で確認する。
+  - **対応環境**: シェル版インストーラーの対象は Linux/WSL とする。Python・Ruby・rg は既存のシステムパッケージマネージャを優先し、`mise` または `asdf` が既に存在する場合だけランタイム導入の候補として利用する。パッケージマネージャやバージョン管理ツール自体は自動導入しない。
+  - **コマンド判定**: `python3` を Python の導入済みコマンドとして受け入れ、AGENTS.md には実際に確認できたコマンド名を記載する。
+  - **サードパーティCLI**: `rtk` と `codegraph` は各公式インストーラーの最新安定版を使い、公式に用意された環境変数等によるバージョン固定の余地は維持する。`~/.local/bin` のためにシェル設定ファイルは変更せず、今回の実行中に限り導入先を検証できるようにする。
+  - **AI連携の境界**: 初期スコープではCLI本体の導入だけを行い、`rtk init`、`codegraph install`、`codegraph init` は自動実行しない。したがって、導入だけではRTKのフックによる透過的な出力圧縮やCodeGraphの索引利用は有効化されない。
+  - **失敗と対話**: 空入力を導入扱いとする既定Yの `[Y/n]` を使い、TTYがない場合は任意ツールをスキップする。個別の導入失敗では後続ツールを継続し、処理末尾に成功・失敗・スキップをまとめて表示する。
+  - **AGENTS.md追記**: 導入に成功した新規ツールのうち、AGENTS.mdに未記載のものだけを収集し、全ツール処理の最後に管理ブロックとして冪等に追記する。既存のAGENTS.md本文や既存のツール記載は上書きしない。細かな説明は追加せず、各CLIの詳細は各コマンドの `--help` に委ねる。
+- Current conclusion: CLI導入とAGENTS.md追記を任意の個別確認で行う方向は確定した。discussion-validation では、Linux/WSL上のパッケージマネージャ選択、既存 `mise` / `asdf` の利用条件、公式インストーラー後の実行ファイル検証、非対話時の終了コード、既存AGENTS.mdへの管理ブロック追記が既存決定と衝突しないことを確認する。
+- Promotion to DECISIONS.yml: pending（discussion-validation 後）
+- Evidence / references (optional):
+  - RTK公式README・インストーラー: `https://github.com/rtk-ai/rtk`, `https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh`
+  - CodeGraph公式README・インストーラー: `https://github.com/colbymchenry/codegraph`, `https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh`
+  - ripgrep公式README: `https://github.com/BurntSushi/ripgrep/blob/master/README.md`
+  - Ruby公式インストール案内: `https://www.ruby-lang.org/en/documentation/installation/`
+
+### Entry 0022 (2026-07-18T12:24:44Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0021 の候補方針を既存の決定契約と実環境へ照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: install.sh の既存CLI委譲・テンプレート配置・AGENTS.md保護、候補ツールの検出、Linuxパッケージマネージャ、RTK/CodeGraph公式インストーラー、PATH副作用、AI連携の別工程を確認済み。
+  - **Focus justification**: 任意ツールの検出・導入、導入元、対話と失敗、AGENTS.md追記に絞り、DODKitのターゲット契約や既存アセット配布方式は変更対象から除外した。RTK/CodeGraphのフック・索引作成を自動化しない非目標も明示した。
+  - **Directional fit**: 不足環境を利用者の確認付きで補完し、導入済みツールをAIへ知らせるという要求と一致する。CLI本体だけではRTKの透過フックやCodeGraphの索引利用が有効にならない点は、初期スコープの残存リスクとして受け入れる。
+  - **Contract fit**: Linux/WSL限定、既存のパッケージマネージャまたは既存 `mise` / `asdf` の利用、パッケージマネージャ自体の自動導入禁止、シェル設定ファイル非変更、既存AGENTS.md本文の保護は既存の配布・保護契約と両立する。現在の環境でも `python3` と `rtk` は検出され、`python`・`ruby`・`rg`・`codegraph`・`mise`・`asdf` は未検出、`apt-get` と `brew` は検出された。
+  - **Hidden bindings として昇格対象**: `installer-011-optional-tool-installation` と、ツール順序・既定Yの確認・非対話時スキップ・個別失敗後の継続・CLI導入のみ・公式インストーラー利用・AGENTS.mdの冪等な管理ブロック追記を小さな sub_decisions として明示する。
+  - **Validation result**: PASS — 候補方向は当初の目的・既存制約・明示した非目標に適合し、実装前に昇格可能。
+- Current conclusion: Entry 0021 の方向性を検証済み。実装開始前に `DECISIONS.yml` へ optional tool installation の契約を昇格する。
+- Promotion to DECISIONS.yml: pending（`installer-011-optional-tool-installation` と sub_decisions）
+- Evidence / references (optional): Linux/WSL上のコマンド検出結果、`bash -n install.sh` PASS、RTK/CodeGraph/ripgrep/Ruby公式インストール資料
+
+### Entry 0023 (2026-07-18T12:25:43Z)
+- Why now: discussion-validation 中に、既存のAGENTS.md上書き保護と新規ツール情報の追記境界を明確化する必要が生じた。
+- Findings / trade-offs:
+  - `AGENTS.md` 全体のテンプレート上書きは既存どおり `--force` を必要とする。
+  - 成功した新規ツールの管理ブロックは既存本文・既存記載を変更しない add-only 操作として扱い、`--force` なしでも追加を許可する。
+  - 管理ブロックが既に存在する場合は同ブロックだけを冪等更新し、ユーザー管理部分や別のツール記載を編集しない。
+- Current conclusion: AGENTS.mdの全体上書き契約と、今回要求された管理ブロックのadd-only追記契約は分離して両立させる。
+- Promotion to DECISIONS.yml: pending（`installer-011-optional-tool-installation` と AGENTS.md追記 sub_decision の契約へ反映）
+- Evidence / references (optional): 既存 `installer-005-2-agents-overwrite` とユーザー要求の追記範囲を照合
+
+### Entry 0024 (2026-07-18T12:26:29Z)
+- Why now: Gate A step 3（decision-promotion）として、discussion-validation を通過した optional tool installation 方針を実装制約へ昇格する。
+- Findings / trade-offs:
+  - `installer-011-optional-tool-installation` と6つの sub_decisions を `DECISIONS.yml` に追加し、status は実装前の `⚠️Discussion Approved` とした。
+  - ツール順序・既定Yの確認・Linux/WSL限定・既存バックエンド利用・`python3` 受入れ・公式インストーラー・CLI導入のみ・非対話時スキップ・個別失敗後の継続・AGENTS.md add-only追記を明示した。
+  - 既存 `installer-005-2-agents-overwrite` の全体上書き保護は維持し、今回の管理ブロック追記だけを独立したadd-only契約として定義した。
+- Current conclusion: optional tool installation の Gate A は完了し、実装は昇格済み契約に従って開始できる。今回の議論フェーズでは実装を開始しない。
+- Promotion to DECISIONS.yml: promoted -> installer-011-optional-tool-installation（および installer-011-1 〜 installer-011-6）
+- Evidence / references (optional): `DECISIONS.yml` diagnosticsなし、`git diff --check` PASS
+
+### Entry 0025 (2026-07-18T12:45:12Z)
+- Why now: `installer-011-optional-tool-installation` の責務が既存インストーラー配布方針から独立したため、決定カテゴリと議論記録を整理する。
+- Findings / trade-offs:
+  - 決定IDは互換性のため維持し、`DECISIONS.yml` の `dev-tools` カテゴリへ移動した。
+  - Entry 0021〜0024 の既存履歴は変更せず、開発用ツールの今後の議論は `records/dev-tools-001-optional-tool-installation.md` へ分離した。
+  - `templates/dev-tools.sh` にツール導入ロジックを置き、`install.sh` は配布と `bash` による実行委譲を担当する境界を `installer-011-7-dev-tools-helper-boundary` として追加した。
+- Current conclusion: 初期インストーラーの履歴と開発用ツールの議論を分離し、決定IDの参照互換性を維持したまま、今後の変更責務を `dev-tools` に集約する。
+- Promotion to DECISIONS.yml: updated -> `installer-011-optional-tool-installation`（カテゴリ、リンク、installer-011-7）
+- Evidence / references (optional): `records/dev-tools-001-optional-tool-installation.md`

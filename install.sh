@@ -12,10 +12,14 @@ SOURCE_REF="main"
 SOURCE_TEMPLATE_URL_BASE="https://raw.githubusercontent.com"
 
 DODKIT_INSTALLER_URL="https://raw.githubusercontent.com/mkgask/dodkit/main/install.sh"
+DEV_TOOLS_SOURCE_TEMPLATE_PATH="templates/dev-tools.sh"
+DEV_TOOLS_DEFAULT_DIRECTORY=".dev"
+DEV_TOOLS_HELPER_PATH=""
 
 DEPLOYMENT_ASSET_SPECS=(
 	"templates/AGENTS.md|AGENTS.md|AGENTS.md"
 	"templates/.docs/PRINCIPLES.md|.docs/PRINCIPLES.md|PRINCIPLES.md"
+	"templates/dev-tools.sh|.dev/dev-tools.sh|dev-tools.sh"
 )
 
 print_usage() {
@@ -24,7 +28,7 @@ Usage:
 	install.sh [arguments-for-dodkit]
 
 Description:
-	Install MyDevSetup assets (AGENTS.md and .docs/PRINCIPLES.md) and then run DODKit installer.
+	Install MyDevSetup assets, deploy the optional development-tools helper, and then run DODKit.
 	Arguments are forwarded to DODKit as-is.
 
 Examples:
@@ -88,7 +92,7 @@ require_command() {
 }
 
 has_tty() {
-	[[ -r /dev/tty ]] && [[ -w /dev/tty ]]
+	[[ -t 0 || -t 1 ]]
 }
 
 path_has_symlink_component() {
@@ -239,6 +243,11 @@ install_template_asset() {
 	local destination_path="$2"
 	local asset_name="$3"
 	local temporary_file=""
+	local allows_unconditional_overwrite=0
+
+	if [[ "$source_template_path" == "$DEV_TOOLS_SOURCE_TEMPLATE_PATH" ]]; then
+		allows_unconditional_overwrite=1
+	fi
 
 	temporary_file="$(mktemp)"
 
@@ -260,7 +269,7 @@ install_template_asset() {
 			return 0
 		fi
 
-		if [[ "$FORCE_OVERWRITE" -ne 1 ]] && ! confirm_overwrite "$destination_path"; then
+		if [[ "$allows_unconditional_overwrite" -ne 1 ]] && [[ "$FORCE_OVERWRITE" -ne 1 ]] && ! confirm_overwrite "$destination_path"; then
 			rm -f "$temporary_file"
 			log_warning "Skipped existing file: $destination_path"
 			return 0
@@ -291,14 +300,68 @@ install_template_assets() {
 	done
 }
 
+select_dev_tools_destination() {
+	local destination_directory="$DEV_TOOLS_DEFAULT_DIRECTORY"
+	local destination_path=""
+	local answer=""
+
+	if [[ -e "$DEV_TOOLS_DEFAULT_DIRECTORY" ]] && [[ ! -d "$DEV_TOOLS_DEFAULT_DIRECTORY" ]]; then
+		die "Cannot use $DEV_TOOLS_DEFAULT_DIRECTORY as a directory"
+	fi
+
+	if [[ -d "$DEV_TOOLS_DEFAULT_DIRECTORY" ]]; then
+		if has_tty; then
+			printf 'Directory for dev-tools.sh [default: %s]: ' "$DEV_TOOLS_DEFAULT_DIRECTORY" >/dev/tty
+			read -r answer </dev/tty || answer=""
+			if [[ -n "$answer" ]]; then
+				destination_directory="$answer"
+			fi
+		else
+			log_warning "Non-interactive execution detected; using default helper directory: $DEV_TOOLS_DEFAULT_DIRECTORY"
+		fi
+	fi
+
+	destination_path="$destination_directory/dev-tools.sh"
+	if path_has_symlink_component "$destination_path"; then
+		die "Refusing to write through symlink path: $destination_path"
+	fi
+
+	if [[ -e "$destination_directory" ]] && [[ ! -d "$destination_directory" ]]; then
+		die "Cannot use helper destination as a directory: $destination_directory"
+	fi
+
+	mkdir -p "$destination_directory"
+	DEV_TOOLS_HELPER_PATH="$destination_path"
+	DEPLOYMENT_ASSET_SPECS[2]="$DEV_TOOLS_SOURCE_TEMPLATE_PATH|$DEV_TOOLS_HELPER_PATH|dev-tools.sh"
+}
+
+run_dev_tools_helper() {
+	local helper_status=0
+
+	log_info "Running optional development-tools helper"
+
+	if DEV_TOOLS_AGENTS_PATH="AGENTS.md" bash "$DEV_TOOLS_HELPER_PATH"; then
+		return 0
+	else
+		helper_status="$?"
+	fi
+
+	die "Development-tools helper failed (exit status $helper_status)"
+}
+
 run_dodkit_installer() {
 	local -a dodkit_args=("$@")
+	local dodkit_status=0
 
 	log_info "Running DODKit installer with passthrough arguments"
 
-	if ! curl --proto '=https' --tlsv1.2 -fsSL "$DODKIT_INSTALLER_URL" | bash -s -- "${dodkit_args[@]}"; then
-		die "DODKit installer failed"
+	if curl --proto '=https' --tlsv1.2 -fsSL "$DODKIT_INSTALLER_URL" | bash -s -- "${dodkit_args[@]}"; then
+		return 0
+	else
+		dodkit_status="$?"
 	fi
+
+	die "DODKit installer failed (exit status $dodkit_status)"
 }
 
 main() {
@@ -317,8 +380,10 @@ main() {
 	fi
 
 	log_info "Starting MyDevSetup installer source=${SOURCE_REPOSITORY}@${SOURCE_REF}"
+	select_dev_tools_destination
 	install_template_assets
 	run_dodkit_installer "${PASSTHROUGH_ARGS[@]}"
+	run_dev_tools_helper
 	log_success "MyDevSetup installer finished"
 }
 
