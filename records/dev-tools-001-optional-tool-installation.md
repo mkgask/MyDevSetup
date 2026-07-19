@@ -175,3 +175,86 @@ Append rules:
 - Implementation refinement: 実働時の失敗診断性を上げるため、外部install/initコマンドの実行前traceを `DEV_TOOLS_DEBUG=1` で stderr に出し、失敗時のsummaryとerrorへ実行コマンドおよび終了コードを含める。個別失敗の後続処理は維持し、helperとinstall.shは最終的に非0を返す。
 - Validation evidence: mock-onlyのヘルパー7件とインストーラー5件、helper／installerの `bash -n`、エディター診断が通過した。失敗mockでinstallとinitの後続継続、status伝播、debug trace、installer最上位のstatus表示を確認した。
 - Execution boundary: 実際の第三者CLIのinstallおよびRTK／CodeGraphのinitは今回も実行していない。
+
+### Entry 0018 (2026-07-19T07:00:00Z)
+- Why now: 初回実行では `DEV_TOOLS_DEBUG=1` を付けない想定のため、失敗時のコマンドと終了コードが通常ログだけで追跡できるかを再確認し、debug traceの識別ラベルを改善する。
+- Broad-scan findings:
+  - `templates/dev-tools.sh` のinstall失敗とinit失敗は、`DEV_TOOLS_DEBUG` の有無に関係なく error と最終summaryへ実行コマンドおよび終了コードを含める。`DEV_TOOLS_DEBUG=1` は実行前traceを追加するだけで、失敗詳細の表示条件ではない。
+  - `install.sh` もhelperおよびDODKitの終了コードをエラーへ含め、子プロセスが出したstderrを保持する。したがって初回実行で詳細取得のために再実行する必要はない。
+  - 現行の失敗テストは `DEV_TOOLS_DEBUG=1` を設定しているため、通常経路の詳細表示自体は実装済みでも、debug環境なしの回帰条件がテストで明示されていない。
+  - 現行debug traceのラベルは `[DEBUG]` であり、ユーザー提案の `[🔵DEBUG]` と異なる。これはstderrのdebug表示ラベルだけを変更する候補で、error／warning／successの既存ラベル契約や出力先とは別である。
+- Focus areas:
+  - `DEV_TOOLS_DEBUG` 未設定時のinstall/init失敗ログとsummaryに、コマンド・終了コードが残ること。
+  - `DEV_TOOLS_DEBUG=1` 時のtraceラベルを `[🔵DEBUG]` とする表示契約。
+  - 実CLIを実行せず、mockで通常経路とdebug経路を分けて検証するテスト境界。
+- Explicit exclusions: 第三者CLIの実install／init、エラーの継続処理・終了status・stderr保持の意味変更、既存のwarning／error／successラベル変更、今回の議論中のコード実装とDECISIONS.yml更新。
+- Candidate direction: 失敗詳細の常時表示は現行実装を維持し、通常経路での表示をmockテストへ追加する。debug traceの見出しだけを `[🔵DEBUG]` に変更し、`DEV_TOOLS_DEBUG=1` のopt-in性、stderr出力、通常ログとの分離を維持する。
+- Current conclusion: 第一の懸念である「初回実行では詳細が取れない」は現行コードで解消済み。追加実装が必要な候補はdebugラベルの変更と、通常経路の回帰テスト明示であり、いずれも既存のfailure-diagnostics決定から逸脱しない。
+- Next validation target: 上記candidate directionが、初回実行の診断性、既存ログ契約、失敗後継続、debug出力のopt-in性を同時に満たすことをdiscussion-validationで確認する。
+- Promotion to DECISIONS.yml: pending（discussion-validation後、必要なら `installer-011-17-failure-diagnostics` のdebugラベルと通常経路テスト要件を更新する）。
+
+### Entry 0019 (2026-07-19T09:18:31Z)
+- Follow-up finding: 導入コマンドが成功した後の実行コマンド検証（`--version`）に失敗する経路では、現行のerrorとsummaryが「command verification failed」とだけ表示し、検証対象コマンドと終了コードを表示しない。これは `installer-011-17-failure-diagnostics` の「外部コマンド失敗は終了コードと実行コマンドを記録する」という契約に対する実装上の残存ギャップである。
+- Refined candidate direction: install／initの実行コマンド失敗だけでなく、導入後検証の各候補コマンドについても、実行コマンドと終了コードを通常の失敗ログとsummaryへ残す。`DEV_TOOLS_DEBUG=1` は実行前traceの追加表示に限定し、debugラベルを `[🔵DEBUG]` へ変更する。通常経路での失敗詳細をmockテストで明示する。
+- Scope boundary: 第三者CLIの実行、失敗処理の継続方針、既存のerror／warning／success出力契約、`install`／`init`の責務は変更しない。今回の議論ではコードとDECISIONS.ymlを変更しない。
+
+### Entry 0020 (2026-07-19T09:18:31Z)
+- Discussion-validation: broad scanは `templates/dev-tools.sh` の実行・検証失敗経路とログ関数、`install.sh` のhelper／DODKit委譲、helper／installerのmockテスト、`DECISIONS.yml` のfailure-diagnostics・logging・failure-continuation契約、AGENTS.mdの編集制約を確認した。実行前trace、通常error、summary、終了status、stderr保持の境界を対象に含めており、今回の診断性の論点に対して十分な範囲である。
+- Directional fit: 通常の初回実行で失敗コマンドと終了コードを見られる状態を維持し、`[🔵DEBUG]`は明示指定時の追加traceに限定する方向は、再実行なしの診断という目的に適合する。検証失敗のコマンド・終了コードを追加することで、導入成功後のPATHや実行ファイル問題も同じ契約で追跡できる。
+- Contract fit: `installer-011-5` の失敗後継続、`installer-011-13` のログとデータ出力の分離、`installer-011-16` のinit境界、`installer-011-17` の非0終了とstderr保持を維持する。実CLIをテストで実行しない制約、既存warning／error／successラベル、AGENTS.mdのinstall／init分離にも抵触しない。
+- Hidden binding: `find_tool_command` の検証試行は候補コマンドと終了コードを構造化して返せるようにし、導入実行失敗と検証失敗をsummary上で区別する必要がある。これは新しい目的ではなく `installer-011-17-failure-diagnostics` の適用範囲を明文化する更新として扱う。
+- Validation result: PASS — candidate directionは元の目的、既存の不変条件、非ゴール、失敗基準に適合する。実装時は通常経路の失敗テスト、検証失敗テスト、`[🔵DEBUG]`表示テストを追加し、既存mock-only suiteを維持する。
+- Promotion to DECISIONS.yml: ready（`installer-011-17-failure-diagnostics` を、導入後検証失敗の詳細表示と `[🔵DEBUG]` ラベルを含む契約へ更新する）。
+
+### Entry 0021 (2026-07-19T09:22:37Z)
+- Why now: `DEV_TOOLS_DEBUG=1` は毎回の設定値ではなく、その実行だけ一時的に有効にしたい診断指定であるため、環境変数より明示的な `--debug` flag の方が呼び出し意図を表すかを再検討する。
+- Active baseline: 対象は `installer-011-15-mode-selection` と `installer-011-17-failure-diagnostics`。いずれも `✅️Implementation Approved` で、現在の補助スクリプト仕様は `dev-tools.sh [install|init] [--global]`、debug traceは `DEV_TOOLS_DEBUG=1` のときだけ有効としている。
+- Broad-scan findings:
+  - `templates/dev-tools.sh` は `DEV_TOOLS_DEBUG` を `log_debug` の条件としてのみ参照し、永続設定や複数回実行にまたがる状態は持たない。用途は一回限りのCLI診断flagに近い。
+  - `parse_args` は `install`／`init`／`--global`／`--help`を処理し、引数の順序を固定していない。現状の `--debug` は未知引数としてstatus 2になり、helpにも環境変数だけが記載されている。
+  - `tests/dev-tools.test.sh` は環境変数を設定して `[DEBUG] Running:` を検証しているため、flag移行時には引数解析、debug有効時のtrace、debug未指定時のtrace不在、通常の失敗詳細を分けて固定する必要がある。
+  - `install.sh` は受け取った引数をDODKitへそのまま渡し、helper起動時には引数を渡していない。したがってトップレベルの `install.sh --debug` まで同じ意味にすると、DODKit引数透過との境界を新たに設計する必要がある。
+  - `.docs/PRINCIPLES.md` は一般的なdebug log levelに絵文字を付ける方針を持つが、今回の `[🔵DEBUG]` は補助スクリプトのstderr trace表示に限定する。既存の `[✅️SUCCESS]`／`[❌️ERROR]`／`[⚠️WARNING]`契約は変更しない。
+- Focus areas:
+  - `dev-tools.sh`の一回限りの診断指定を `--debug` として解析し、mode／`--global`と任意順序で併用できるか。
+  - debug未指定時のtrace不在と、通常失敗ログ・summaryにおけるコマンド／終了コード表示の分離。
+  - helper単体のflag契約と、DODKit引数を透過するトップレベル `install.sh` の責務境界。
+- Explicit exclusions: 今回はコード、テスト、`DECISIONS.yml`、トップレベル`install.sh`の引数透過契約、DODKitの受け付ける引数、第三者CLIのinstall／initを変更しない。`DEV_TOOLS_DEBUG`を環境変数として残す互換aliasも候補から外し、制御経路を二重化しない。
+- Candidate direction: `dev-tools.sh [install|init] [--global] [--debug]` を正式な一回限りの診断指定とし、既存parserと同じくflagの位置は問わず、複数指定は冪等に扱う。`--debug`なしではtraceを出さず、失敗の詳細ログは従来どおり常時表示する。トップレベル`install.sh --debug`は別議論で明示的にhelperへ渡す契約を定めるまでサポート対象にしない。
+- Current conclusion: 用途と実行単位の一致、呼び出し時の可視性、環境継承による意図しないdebug有効化の回避という点で、`DEV_TOOLS_DEBUG=1`より`--debug`への一本化が妥当である。ただしトップレベルinstallerからhelperを診断したい場合は別の引数設計が必要であり、今回の候補に暗黙に含めない。
+- Next validation target: `--debug`一本化が `installer-011-15` のmode／global契約、`installer-011-17` のtrace・失敗詳細契約、DODKit引数透過、非対話・mock-onlyテスト方針と両立するかを確認する。
+- Promotion to DECISIONS.yml: pending（discussion-validation後、必要なら `installer-011-15` と `installer-011-17` のdebug指定を更新する）。
+
+### Entry 0022 (2026-07-19T09:22:37Z)
+- Discussion-validation: broad scanは補助スクリプトのparser／help／trace関数、helperのmockテスト、トップレベルinstallerのDODKit引数透過とhelper委譲、関連するログ原則、対象決定の契約を確認しており、flag移行で影響する主要境界を網羅している。特に、helper引数とトップレベルinstaller引数を同一視しない omission risk を明示できている。
+- Focus validation: 一回限りのdebug指定、通常失敗詳細との分離、mode／`--global`との併用、テストでのmock-only検証に絞ることは、広い調査結果から直接導かれている。`install.sh --debug`の意味付けとDODKitの対応可否を今回の焦点から外した理由も、既存の引数透過契約に基づき明確である。
+- Directional fit: `dev-tools.sh`のdebug指定を `--debug`へ一本化する方向は、ユーザーの「毎回ではない診断」を明示的な呼び出しにする目的に適合する。環境変数の継承による意図しないtraceを避け、通常実行の失敗コマンド・終了コード表示は維持できる。
+- Contract fit: `installer-011-15` のmode省略・`install`既定・`init --global`拒否、`installer-011-17` のstderr trace・失敗後継続・非0終了、`installer-011-13` のログ出力契約、DODKit引数の透過、第三者CLIを実行しないテスト方針と衝突しない。既存のwarning／error／successラベルも変更しない。
+- Hidden binding: `--debug`はhelper単体の正式な一回限りflagとして `installer-011-15` と `installer-011-17` に昇格し、`DEV_TOOLS_DEBUG`を通常契約から削除する必要がある。トップレベル`install.sh --debug`を将来サポートする場合は、DODKitへ渡す引数とhelperへ渡す診断指定の分離を別decisionで定義する。
+- Validation result: PASS — candidate directionは元の目的、現在の決定、不変条件、非ゴール、失敗基準に適合する。今回の段階では決定昇格と実装を行わず、次段階で契約更新後にhelperのparser／help／trace／通常失敗テストを実装する。
+- Promotion to DECISIONS.yml: ready（`installer-011-15-mode-selection` と `installer-011-17-failure-diagnostics` を `--debug`一本化へ更新する。トップレベルinstallerへのdebug転送は含めない）。
+
+### Entry 0023 (2026-07-19T09:30:00Z)
+- Promotion result: `installer-011-15-mode-selection` を更新し、`dev-tools.sh`の正式な引数へ `--debug` を追加した。flagの任意順序・重複指定の冪等性、環境変数代替を提供しないこと、トップレベル`install.sh`の引数透過とhelper委譲を変更しない境界を明記した。
+- Promotion result: `installer-011-17-failure-diagnostics` を更新し、install／init実行失敗だけでなく導入後検証失敗にもコマンドと終了コードの記録を要求した。`--debug`指定時のみ `[🔵DEBUG]` traceをstderrへ出し、`DEV_TOOLS_DEBUG`だけではtraceを有効化しない契約へ変更した。
+- Decision-shape assessment: 新しい独立decisionは追加していない。mode／責務境界とfailure diagnosticsの既存decisionへ分割して保持することで、debug flag、ログ出力、検証失敗、トップレベルinstaller非対応の各ルールを過度に一つへ集約していない。
+- Implementation obligations: parser／help、debug状態、traceラベルとstderr、環境変数単独時のtrace不在、flag組み合わせ、通常失敗詳細、導入後検証失敗詳細をmock-onlyテストで固定する。実CLIのinstall／initは実行しない。
+- Status result: 対象2件を `⚠️Discussion Approved` とし、今回の契約変更は未実装であることを明示した。親decisionと他の既存契約は変更していない。
+- Remaining non-binding question: トップレベル`install.sh --debug`を将来サポートする場合は、DODKitへの引数透過とhelperへの診断指定を分離する別議論が必要である。現時点では実装対象外とする。
+
+### Entry 0024 (2026-07-19T09:37:47Z)
+- Implementation result: `templates/dev-tools.sh` に `--debug` の引数解析と一回限りのdebug状態を追加し、`DEV_TOOLS_DEBUG`環境変数には依存しないようにした。helpの使用方法を更新し、traceを `[🔵DEBUG]` ラベルでstderrへ出力する。
+- Implementation result: 導入後の `--version` 検証を実行記録経路へ統合し、検証候補ごとのcommand・exit status・失敗理由を集約して、errorとsummaryへ表示する。既存のinstall／init失敗の後続継続、非0終了、通常ログ契約は維持した。
+- Test result: `tests/dev-tools.test.sh` にhelper引数の受け渡し、環境変数だけではtraceを出さないこと、`--debug`時の `[🔵DEBUG]`、検証失敗のcommand/status、helpとflag組み合わせを追加した。mock-onlyのhelper 8件とinstaller 5件が通過した。
+- Implementation boundary: `install.sh` は変更せず、DODKit引数透過とトップレベルinstallerからhelperへdebugを渡さない境界を維持した。実際の第三者CLIのinstall／initは実行していない。
+- Validation evidence: 変更対象と関連artifactのエディター診断、4ファイルの `bash -n`、`DECISIONS.yml` のRuby YAMLパース、決定ID重複確認、`git diff --check` が通過した。実装中に検証status取得位置の不具合を修正し、同じhelper suiteを再実行して通過を確認した。
+
+### Entry 0025 (2026-07-19T09:37:47Z)
+- Implementation-validation: executable validationはhelper 8件とinstaller 5件のmock-only suite、Bash構文、エディター診断、YAMLパース、差分空白チェックを含めてPASSだった。旧 `DEV_TOOLS_DEBUG` と `[DEBUG] Running:` は実装ファイル・テスト・installerに残っていない。
+- Artifact alignment: `installer-011-15` のhelper限定flag、任意順序・冗等性・env代替なし・top-level非対応と、`installer-011-17` の失敗詳細・`[🔵DEBUG]`・stderr・非0終了・失敗後継続がコードとtestsへ反映されている。`install.sh`のDODKit引数透過は未変更である。
+- Terminology and record hygiene: help、テスト期待値、ログラベル、決定契約は `--debug` と `[🔵DEBUG]` に揃っている。`DECISIONS.yml`のlinkは本記録を指し、今回の実装で新たなbinding decisionは発生していない。
+- Status result: `installer-011-15-mode-selection` と `installer-011-17-failure-diagnostics` を `✅️Implementation Approved` とした。実装対象の決定契約は満たされており、closeoutを阻む問題はない。
+- Remaining risk: ShellCheckは環境に存在しないため実行していない。トップレベル`install.sh --debug`対応は今回の決定・実装範囲外であり、必要になった時点でDODKit引数との分離を別議論する。
+
+### Entry 0026 (2026-07-19T09:37:47Z)
+- Validation correction: Entry 0025の旧参照に関する記述を補足する。実装ファイルでは `DEV_TOOLS_DEBUG` と `[DEBUG] Running:` を参照しないが、`tests/dev-tools.test.sh` には環境変数だけではtraceを出さないことを検証する負のfixtureと、旧ラベルが出ないことを検証するassertが意図的に残る。これはactive decisionの「環境変数単独ではtraceを出さない」を固定するテストであり、terminology driftではない。

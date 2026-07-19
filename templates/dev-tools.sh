@@ -17,6 +17,9 @@ declare -A TOOL_RESULT_DETAILS=()
 declare -A NEW_TOOL_COMMANDS=()
 TOOL_FAILURE_COUNT=0
 LAST_OPERATION_COMMAND=""
+FOUND_TOOL_COMMAND=""
+LAST_VERIFICATION_DETAILS=""
+DEBUG_ENABLED=0
 
 DEV_TOOLS_MODE="install"
 GLOBAL_INSTALL=0
@@ -31,16 +34,16 @@ CODEGRAPH_INSTALLER_URL="https://raw.githubusercontent.com/colbymchenry/codegrap
 print_usage() {
 	cat <<'USAGE'
 Usage:
-	dev-tools.sh [install|init] [--global]
+	dev-tools.sh [install|init] [--global] [--debug]
 	dev-tools.sh --help
 
 Description:
 	Install missing development CLI tools or initialize installed tools for the current project.
 	The --global option is available only for install mode.
+	The --debug option prints external command traces for this run.
 
 Environment:
 	DEV_TOOLS_AGENTS_PATH  Override the AGENTS.md path for this run.
-	DEV_TOOLS_DEBUG=1       Print external install/init commands before execution.
 USAGE
 }
 
@@ -81,8 +84,8 @@ log_success() {
 }
 
 log_debug() {
-	if [[ "${DEV_TOOLS_DEBUG:-0}" == "1" ]]; then
-		printf '[DEBUG] %s\n' "$1" >&2
+	if [[ "$DEBUG_ENABLED" -eq 1 ]]; then
+		printf '[🔵DEBUG] %s\n' "$1" >&2
 	fi
 }
 
@@ -167,12 +170,38 @@ tool_command_candidates() {
 find_tool_command() {
 	local tool_name="$1"
 	local command_name=""
+	local verification_status=0
+	local verification_command=""
+	local verification_reason=""
+
+	FOUND_TOOL_COMMAND=""
+	LAST_VERIFICATION_DETAILS=""
 
 	while IFS= read -r command_name; do
-		if command -v "$command_name" >/dev/null 2>&1 && "$command_name" --version >/dev/null 2>&1; then
-			printf '%s' "$command_name"
-			return 0
+		verification_command="$(format_command "$command_name" --version)"
+		if ! command -v "$command_name" >/dev/null 2>&1; then
+			verification_status=127
+			verification_reason="command not found"
+			if [[ -n "$LAST_VERIFICATION_DETAILS" ]]; then
+				LAST_VERIFICATION_DETAILS+='; '
+			fi
+			LAST_VERIFICATION_DETAILS+="command: $verification_command (exit status $verification_status; $verification_reason)"
+			continue
 		fi
+
+		record_operation_command "$command_name" --version
+		if "$command_name" --version >/dev/null 2>&1; then
+			FOUND_TOOL_COMMAND="$command_name"
+			return 0
+		else
+			verification_status="$?"
+		fi
+
+		verification_reason="command exited unsuccessfully"
+		if [[ -n "$LAST_VERIFICATION_DETAILS" ]]; then
+			LAST_VERIFICATION_DETAILS+='; '
+		fi
+		LAST_VERIFICATION_DETAILS+="command: $verification_command (exit status $verification_status; $verification_reason)"
 	done < <(tool_command_candidates "$tool_name")
 
 	return 1
@@ -712,8 +741,10 @@ process_install_tool() {
 	local selected_route=""
 	local operation_status=0
 	local operation_command=""
+	local verification_detail=""
 
-	if installed_command="$(find_tool_command "$tool_name")"; then
+	if find_tool_command "$tool_name"; then
+		installed_command="$FOUND_TOOL_COMMAND"
 		set_tool_result "$tool_name" present "$installed_command"
 		log_info "$tool_name is already available as $installed_command"
 		return 0
@@ -747,12 +778,14 @@ process_install_tool() {
 		return 0
 	fi
 
-	if ! installed_command="$(find_tool_command "$tool_name")"; then
-		set_tool_result "$tool_name" failed "$selected_route (command verification failed)"
-		log_error "Installed $tool_name via $selected_route but could not verify its command"
+	if ! find_tool_command "$tool_name"; then
+		verification_detail="${LAST_VERIFICATION_DETAILS:-unknown command verification failure}"
+		set_tool_result "$tool_name" failed "$selected_route (command verification failed; $verification_detail)"
+		log_error "Installed $tool_name via $selected_route but command verification failed; $verification_detail"
 		return 0
 	fi
 
+	installed_command="$FOUND_TOOL_COMMAND"
 	NEW_TOOL_COMMANDS["$tool_name"]="$installed_command"
 	set_tool_result "$tool_name" installed "$installed_command via $selected_route"
 	log_success "Installed $tool_name as $installed_command via $selected_route"
@@ -774,11 +807,13 @@ process_init_tool() {
 			;;
 	esac
 
-	if ! installed_command="$(find_tool_command "$tool_name")"; then
+	if ! find_tool_command "$tool_name"; then
 		set_tool_result "$tool_name" skipped "command not available"
 		log_warning "$tool_name is not available; skipping project initialization"
 		return 0
 	fi
+
+	installed_command="$FOUND_TOOL_COMMAND"
 
 	if run_project_initialization "$tool_name" "$installed_command"; then
 		:
@@ -939,6 +974,7 @@ parse_args() {
 
 	DEV_TOOLS_MODE="install"
 	GLOBAL_INSTALL=0
+	DEBUG_ENABLED=0
 
 	while (($# > 0)); do
 		case "$1" in
@@ -952,6 +988,9 @@ parse_args() {
 				;;
 			--global)
 				GLOBAL_INSTALL=1
+				;;
+			--debug)
+				DEBUG_ENABLED=1
 				;;
 			-h|--help)
 				print_usage

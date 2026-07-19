@@ -292,8 +292,9 @@ decisions:
 
         - id: installer-011-15-mode-selection
           decision: >
-            補助スクリプトは dev-tools.sh [install|init] [--global] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行う。
-            --global は install との組み合わせだけを許可し、init との組み合わせは明示的な引数エラーとする。
+            補助スクリプトは dev-tools.sh [install|init] [--global] [--debug] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行う。
+            --global と --debug は引数の位置を問わず受け付け、同じflagの複数指定は冪等に扱う。--debug はこの補助スクリプトの一回限りの診断指定であり、環境変数による代替指定は提供しない。
+            --global は install との組み合わせだけを許可し、init との組み合わせは明示的な引数エラーとする。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug を渡す契約はこの決定に含めない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -307,7 +308,7 @@ decisions:
 
         - id: installer-011-17-failure-diagnostics
           decision: >
-            install と init の外部コマンド失敗は後続ツールの処理を継続しつつ、対象ツールの結果に終了コードと実行コマンドを記録し、補助スクリプト全体は失敗を反映した非0を返す。
-            DEV_TOOLS_DEBUG=1 のときは外部install/initコマンドを実行前に stderr へ追跡出力し、通常時の標準出力・標準エラーのログ契約を変更しない。
+            install と init の外部コマンド失敗、および導入後のコマンド検証失敗は、後続ツールの処理を継続しつつ、対象ツールの結果・error・最終summaryに実行コマンドと終了コードを記録し、補助スクリプト全体は失敗を反映した非0を返す。
+            dev-tools.sh に --debug が明示されたときだけ、外部install/initコマンドと導入後検証コマンドの実行前traceを stderr へ [🔵DEBUG] ラベルで出力する。--debug がない通常実行と DEV_TOOLS_DEBUG 環境変数だけを設定した実行ではtraceを出力せず、既存の標準出力・標準エラーのwarning／error／successログ契約を変更しない。
           status: "✅️Implementation Approved"
           sub_decisions: []

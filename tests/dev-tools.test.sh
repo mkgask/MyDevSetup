@@ -123,12 +123,21 @@ prepare_install_mocks() {
 
 run_helper_with_inputs() {
 	local inputs="$1"
+	shift
 	local output_file="$MOCK_ROOT/output.log"
 	local status_file="$MOCK_ROOT/status"
 	local command_status=0
 	local command=""
+	local argument=""
+	local quoted_argument=""
+	local helper_arguments=""
 
-	command="env DEV_TOOLS_AGENTS_PATH=\"$MOCK_AGENTS\" HOME=\"$MOCK_HOME\" MOCK_ROOT=\"$MOCK_ROOT\" MOCK_BIN=\"$MOCK_BIN\" MOCK_LOG=\"$MOCK_LOG\" MOCK_FAIL_TOOL=\"$MOCK_FAIL_TOOL\" PATH=\"$PATH\" bash \"$HELPER_PATH\"; command_status=\$?; printf '%s' \"\$command_status\" > \"$status_file\"; exit \"\$command_status\""
+	for argument in "$@"; do
+		printf -v quoted_argument '%q' "$argument"
+		helper_arguments+=" $quoted_argument"
+	done
+
+	command="env DEV_TOOLS_AGENTS_PATH=\"$MOCK_AGENTS\" HOME=\"$MOCK_HOME\" MOCK_ROOT=\"$MOCK_ROOT\" MOCK_BIN=\"$MOCK_BIN\" MOCK_LOG=\"$MOCK_LOG\" MOCK_FAIL_TOOL=\"$MOCK_FAIL_TOOL\" PATH=\"$PATH\" bash \"$HELPER_PATH\"$helper_arguments; command_status=\$?; printf '%s' \"\$command_status\" > \"$status_file\"; exit \"\$command_status\""
 	printf '%s' "$inputs" | script --quiet --flush --command "$command" "$output_file" > "$output_file.stdout" 2>&1 || true
 	command_status="$(<"$status_file")"
 
@@ -268,7 +277,8 @@ test_interactive_install_and_failure_continuation() {
 	assert_contains 'ruby       failed' "$MOCK_ROOT/output.log.stdout" 'report failed tool' || return 1
 	assert_contains 'exit status 1' "$MOCK_ROOT/output.log.stdout" 'report failed operation status' || return 1
 	assert_contains 'apt-get install -y ruby' "$MOCK_ROOT/output.log.stdout" 'report failed operation command' || return 1
-	assert_contains '[DEBUG] Running:' "$MOCK_ROOT/output.log.stdout" 'emit optional debug command trace' || return 1
+	assert_not_contains '[DEBUG] Running:' "$MOCK_ROOT/output.log.stdout" 'ignore legacy debug environment variable' || return 1
+	assert_not_contains '[🔵DEBUG] Running:' "$MOCK_ROOT/output.log.stdout" 'do not emit trace without debug flag' || return 1
 	assert_contains 'rg         installed' "$MOCK_ROOT/output.log.stdout" 'continue after failed tool' || return 1
 	assert_not_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'do not record failed tool' || return 1
 	assert_contains 'official rtk' "$MOCK_LOG" 'run official rtk installer' || return 1
@@ -276,6 +286,32 @@ test_interactive_install_and_failure_continuation() {
 	assert_not_contains 'init' "$MOCK_LOG" 'do not run CLI initialization' || return 1
 
 	unset DEV_TOOLS_DEBUG
+}
+
+test_debug_flag_and_verification_failure() {
+	local output=""
+	local helper_status=0
+
+	prepare_mock_environment debug-flag
+	install_failed_tool_stubs
+	prepare_install_mocks
+	write_mock_command "$MOCK_BIN/apt-get" \
+		'package_name="${@: -1}"' \
+		'printf "system %s\\n" "$*" >> "$MOCK_LOG"' \
+		'printf "%s\\n" "#!/usr/bin/env bash" "exit 7" > "$MOCK_BIN/$package_name"' \
+		'chmod +x "$MOCK_BIN/$package_name"'
+
+	if output="$(run_helper_with_inputs $'skip\nsystem\nskip\nskip\nskip\n' --debug)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '1' "$helper_status" 'return failure when command verification fails' || return 1
+	assert_contains '[🔵DEBUG] Running: ruby --version' "$MOCK_ROOT/output.log.stdout" 'emit debug trace with explicit flag' || return 1
+	assert_not_contains '[DEBUG] Running:' "$MOCK_ROOT/output.log.stdout" 'remove legacy debug label' || return 1
+	assert_contains 'ruby       failed' "$MOCK_ROOT/output.log.stdout" 'report command verification failure' || return 1
+	assert_contains 'exit status 7' "$MOCK_ROOT/output.log.stdout" 'report verification status' || return 1
+	assert_contains 'command: ruby --version' "$MOCK_ROOT/output.log.stdout" 'report verification command' || return 1
 }
 
 run_helper_mode() {
@@ -298,13 +334,29 @@ test_mode_parsing_and_logging() {
 	local warning_output=""
 	local error_output=""
 	local success_output=""
+	local usage_output_file="$MOCK_ROOT/usage.output"
 
 	prepare_mock_environment mode-and-logging
 	source "$HELPER_PATH"
 
+	if ! parse_args --debug --global; then
+		fail_test 'debug and global flags were rejected'
+		return 1
+	fi
+	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state' || return 1
+	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state with debug' || return 1
+
 	parse_args --global
 	assert_equal 'install' "$DEV_TOOLS_MODE" 'global defaults to install mode' || return 1
 	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state' || return 1
+	assert_equal '0' "$DEBUG_ENABLED" 'debug flag resets between parses' || return 1
+
+	if ! parse_args init --debug; then
+		fail_test 'debug flag was rejected for init mode'
+		return 1
+	fi
+	assert_equal 'init' "$DEV_TOOLS_MODE" 'init mode with debug flag' || return 1
+	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state for init mode' || return 1
 
 	if parse_args init --global; then
 		fail_test 'init --global was accepted'
@@ -319,6 +371,9 @@ test_mode_parsing_and_logging() {
 	assert_equal '[⚠️WARNING] warning' "$warning_output" 'warning log contract' || return 1
 	assert_equal '[❌️ERROR] error' "$error_output" 'error log contract' || return 1
 	assert_equal '[✅️SUCCESS] success' "$success_output" 'success log contract' || return 1
+	print_usage > "$usage_output_file"
+	assert_contains 'dev-tools.sh [install|init] [--global] [--debug]' "$usage_output_file" 'document debug flag' || return 1
+	assert_not_contains 'DEV_TOOLS_DEBUG' "$usage_output_file" 'remove debug environment variable documentation' || return 1
 }
 
 write_init_tool_mocks() {
@@ -414,6 +469,7 @@ run_test 'route filtering' test_route_filtering
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
 run_test 'AGENTS.md managed block' test_agents_block_is_add_only_and_idempotent
 run_test 'interactive install and failure continuation' test_interactive_install_and_failure_continuation
+run_test 'debug flag and verification failure' test_debug_flag_and_verification_failure
 run_test 'default routes and skip selection' test_default_route_and_skip_selection
 run_test 'mode parsing and logging' test_mode_parsing_and_logging
 run_test 'project initialization mode' test_project_init_mode
