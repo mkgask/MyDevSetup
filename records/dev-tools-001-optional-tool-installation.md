@@ -303,3 +303,45 @@ Append rules:
 - Failure and recording outcome: uv導入失敗時はSerenaのuv-tool候補を出さず、後続対象の処理を継続して全体を非0にする。uvとSerenaの導入成功時は検証済みの `uv` と `serena` を既存のAGENTS.md管理ブロックへ追記する。
 - Validation: `bash tests/dev-tools.test.sh` は9件、`bash tests/install.test.sh` は5件がpassした。route候補、uv先行、uv依存失敗、init時のuv skip、Serenaのserver-side init、MCP CLIヘルプ、禁止されたproject/index/client/daemon操作の不在をfocused fixtureで確認した。`bash -n templates/dev-tools.sh tests/dev-tools.test.sh tests/install.test.sh install.sh`、editor diagnostics、`ruby`による`DECISIONS.yml` YAML検証、`git diff --check`もpassした。
 - Remaining non-binding risk: Serenaの将来バージョンが `serena init` で作成するユーザー側runtime設定の具体的なファイル構成を変更する可能性は公式CLIへ委譲する。helperはその設定ファイルを直接編集・検査しない。
+
+### Entry 0031 (2026-07-19T00:00:03Z)
+- Why now: `install` と `init` に加えて、各ツールの現在状態だけを確認し、install時と同じsummary形式で表示するモードが必要になった。導入や初期化を伴わない問い合わせ操作として、モード名を `status` とするか、出力名に近い `summary` とするかを整理する必要がある。
+- Active baseline: 対象は `installer-011-7-dev-tools-helper-boundary`、`installer-011-13-logging-and-data-output`、`installer-011-15-mode-selection`、`installer-011-17-failure-diagnostics`。`templates/dev-tools.sh` は `DEV_TOOLS_MODE` に `install` と `init` だけを受け付け、`find_tool_command` は各対象を `--version` で検証し、`print_summary` は処理結果を対象順に表示する。`main` はinstall時だけAGENTS.mdを更新する。
+- Broad-scan findings:
+  - 新モードの主な変更点は `parse_args`、モード別dispatch、結果状態の設定、終了status、使用方法、focused testであり、`install.sh`の配布・実行委譲や既存のinstall/init処理は直接変更する必要がない。
+  - 現在の `find_tool_command` はPATH準備後に外部導入を行わず、利用可能な実行コマンドと `--version` の結果だけを返せるため、statusの読み取り処理に再利用できる。statusではprompt、installer、project initialization、AGENTS.md更新を行わない必要がある。
+  - `print_summary` は表示フォーマットの責務であり、statusを `summary` と命名すると出力関数名と操作名が混同しやすい。CLI利用者の意図は「現在の状態を問い合わせる」ため、候補としては `status` の方が既存の `install`、`init` と並ぶ操作名として明確である。
+  - statusの結果状態は、導入処理の `installed`、`initialized`、`skipped`、`failed` をそのまま流用すると、何も実行していない問い合わせ結果を誤って表す可能性がある。少なくとも検証成功の `present` と、未検出・検証失敗を区別する表示語が必要になる。
+  - `--global` は導入スコープを表すためstatusには意味がなく、statusと組み合わせた場合は引数エラーにする候補が既存の `init --global` 拒否と整合する。`--debug` はstatusの `--version` 検証traceを必要時だけ出す用途に再利用できる。
+- Focus areas:
+  - canonical mode nameを `status` とし、`summary` を正式な別名として追加するかどうか。候補方向はAPIを増やさず `status` のみを正式名にし、`print_summary` は内部表示関数として維持する。
+  - statusの各対象を `find_tool_command` で検証し、install/initを一切実行せず、AGENTS.mdやproject filesを変更しない読み取り専用境界。
+  - 未導入、実行ファイル存在だが `--version` 検証失敗、検証成功をsummaryへどう表示するか、および全対象が利用可能でない場合にstatusを非0にするか。
+  - `--global`、`--debug`、非Linux環境、uv/Serenaを含む対象順、status時の後続処理継続を既存契約へどう接続するか。
+- Explicit exclusions: 今回の議論ではコード、テスト、`DECISIONS.yml`、`install.sh`を変更しない。`summary`をstatusの別名として受け付けること、JSON等の新しい出力形式、watch/daemon化、導入経路やinit処理の変更、AGENTS.mdのstatus記録は対象外とする。
+- Candidate direction: 正式な操作名は `status` とし、実装時は現在の対象順で全ツールを検証してから既存summary形式を表示する。statusはprompt、導入、初期化、AGENTS.md更新を行わず、PATH準備は現在プロセス内の検出に必要な範囲だけ許可する。表示状態は少なくとも `present` と未利用状態を区別し、`summary`は内部関数名として残す。`status --global` は拒否し、`--debug` は任意に許可する。
+- Current conclusion: ユーザーが求めているのは出力形式ではなく現在状態の問い合わせなので、`status` の方が `summary` よりCLIの操作名として適切である。既存の `find_tool_command` と `print_summary` を活用でき、実装範囲もhelper内のモード分岐とテストに限定できる。ただし、欠落時の表示語とstatus全体の終了コードはbinding contractにする前に確認が必要である。
+- Next validation target: discussion-validationでは、statusの読み取り専用性、`status --global` の拒否、status時のdebug trace、欠落・検証失敗・検証成功の表示状態、全対象不在時の終了コードが元の「表示だけ見たい」という目的に適合するかを確認する。特に終了コードを「常に表示成功で0」または「ツール不足を反映して非0」のどちらにするかを決定する。
+- Promotion to DECISIONS.yml: pending（このentryでは候補方向と未確定論点だけを記録し、コード・decision契約は変更しない）。
+
+### Entry 0032 (2026-07-19T00:00:04Z)
+- Discussion update: ユーザーは正式なモード名を `status` とし、いずれかのツールが不足または検証失敗した場合の終了statusを `1` とする方向を承認した。install時のsummary表示とstatus時の状態表示は共通処理にできるかを確認し、モードごとのタイトル表示と、summary描画後の終了status処理を分離する案を提示した。
+- Discussion-validation: broad scanで確認した `templates/dev-tools.sh` の検出、結果集計、引数解析、mainの終了処理、`tests/dev-tools.test.sh` の既存契約、および `installer-011-7`、`installer-011-13`、`installer-011-15`、`installer-011-17` の境界に対して、候補方向は適合する。`install.sh`の配布責務、既存install/init処理、AGENTS.md記録はstatusの読み取り専用追加によって変更されない。
+- Validated direction:
+  - canonical modeは `status` とする。モード省略時は既存どおり `install` とし、`summary` は新しい公開aliasとして追加しない。
+  - statusは全対象を既存の `find_tool_command` で検証し、prompt、install、init、project設定、AGENTS.md更新を行わない。検出成功は `present`、検出または `--version`検証が完了しない場合は `unavailable` として、`LAST_VERIFICATION_DETAILS` 相当の詳細をsummaryへ残す。
+  - statusは対象を最後まで処理し、1件でも `unavailable` があればsummary表示後に `1` を返す。検出処理そのものが完了して表示できたことだけを理由に成功扱いにはしない。
+  - summaryはモードに依存しない結果行描画関数へ分離する。install/statusはそれぞれ必要なタイトルを表示し、各モードの処理・固有の失敗集計を終えた後に共通の結果行描画を呼び、描画後に各自の終了statusを返す。既存のsummary形式、対象順、結果詳細の表示契約は維持する。
+  - `status --global` は引き続き引数エラーとし、`--debug` はstatusの `--version` 検証traceに利用できる。既存のLinux/WSL判定とプロセス内PATH準備の境界は変更しない。
+- Contract audit: 状態問い合わせと導入・初期化を分離するため、read-only境界、全対象継続、非0終了、共通描画、global拒否、debug許可は実装に必要なbinding constraintである。新しい出力形式、永続PATH設定、AGENTS.mdへのstatus記録、installer.shの引数透過は引き続き非対象である。
+- Promotion target: `installer-011-15-mode-selection` にstatusの引数・global/debug制約を追加し、`installer-011-13-logging-and-data-output` にモード非依存のsummary行描画を追加し、`installer-011-17-failure-diagnostics` にstatusの検証失敗・終了status・継続を追加する。既存decisionを過度に膨らませないため、status専用の表示状態・read-only境界は新しい `installer-011-20-status-mode` として独立させる。
+- Remaining non-binding detail: statusタイトルの文言と、`unavailable` の詳細文面は既存のsummaryレイアウトを壊さない範囲で実装時に決める。いずれも終了status、読み取り専用境界、対象順、診断情報の契約は変更しない。
+
+### Entry 0033 (2026-07-19T00:00:05Z)
+- Implementation outcome: `templates/dev-tools.sh` に `status` モードを追加し、対象順に `find_tool_command` を実行して検証成功を `present`、検出または `--version` 検証不能を `unavailable` として集計するようにした。statusは全対象を継続処理し、検証詳細を結果行へ残す。
+- Summary integration outcome: 既存のinstall/init用 `Development-tool summary:` タイトルと、status用 `Development-tool status:` タイトルをモード側に分離し、対象結果行の描画は `print_summary_rows` へ共通化した。summary表示後にinstall/initは既存failureとAGENTS.md更新結果を、statusは `STATUS_UNAVAILABLE_COUNT` をそれぞれ判定して終了する。
+- Read-only outcome: statusではprompt、install、init、project設定、AGENTS.md更新を実行せず、`--global` は引数エラー、明示的な `--debug` はversion検証traceだけを許可した。`install.sh`、既存のinstall/init処理、対象順、現在プロセス内PATH準備は変更していない。
+- Test outcome: `bash tests/dev-tools.test.sh` は10件、`bash tests/install.test.sh` は5件がpassした。statusの混在状態・version失敗・全対象継続・summary後の終了1、全対象利用可能時の終了0、AGENTS.md非変更、install/initコマンド非実行、`--debug` trace、`status --global`拒否をfocused fixtureで確認した。
+- Validation outcome: `bash -n templates/dev-tools.sh tests/dev-tools.test.sh tests/install.test.sh install.sh`、editor diagnostics、`ruby`による`DECISIONS.yml` YAML検証（49 unique ids）、`git diff --check` がpassした。配布テストもstatus追加によるinstall.shの退行なしを確認した。
+- Decision alignment: `installer-011-13`、`installer-011-15`、`installer-011-17`、`installer-011-20` の実装契約を満たしたため、これらのstatusを `✅️Implementation Approved` へ更新する。今回の実装で新しいbinding constraintは発生していない。
+- Remaining non-binding risk: 非Linux環境では既存のLinux/WSL warning-and-skipを維持するためstatusのツール検証は行われず、対応環境での「unavailableなら1」という契約とは別に既存の非対応環境動作が適用される。

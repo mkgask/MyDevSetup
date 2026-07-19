@@ -18,6 +18,7 @@ declare -A TOOL_RESULTS=()
 declare -A TOOL_RESULT_DETAILS=()
 declare -A NEW_TOOL_COMMANDS=()
 TOOL_FAILURE_COUNT=0
+STATUS_UNAVAILABLE_COUNT=0
 LAST_OPERATION_COMMAND=""
 FOUND_TOOL_COMMAND=""
 LAST_VERIFICATION_DETAILS=""
@@ -37,11 +38,11 @@ UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 print_usage() {
 	cat <<'USAGE'
 Usage:
-	dev-tools.sh [install|init] [--global] [--debug]
+	dev-tools.sh [install|init|status] [--global] [--debug]
 	dev-tools.sh --help
 
 Description:
-	Install missing development CLI tools or initialize installed tools for the current project.
+	Install missing development CLI tools, initialize installed tools for the current project, or display their current status.
 	The --global option is available only for install mode.
 	The --debug option prints external command traces for this run.
 
@@ -896,13 +897,32 @@ process_init_tool() {
 	log_success "Initialized $tool_name for the current project"
 }
 
-process_tool() {
-	if [[ "$DEV_TOOLS_MODE" == "init" ]]; then
-		process_init_tool "$1"
+process_status_tool() {
+	local tool_name="$1"
+	local verification_detail=""
+
+	if find_tool_command "$tool_name"; then
+		set_tool_result "$tool_name" present "$FOUND_TOOL_COMMAND"
 		return 0
 	fi
 
-	process_install_tool "$1"
+	verification_detail="${LAST_VERIFICATION_DETAILS:-unknown command verification failure}"
+	set_tool_result "$tool_name" unavailable "$verification_detail"
+	STATUS_UNAVAILABLE_COUNT=$((STATUS_UNAVAILABLE_COUNT + 1))
+}
+
+process_tool() {
+	case "$DEV_TOOLS_MODE" in
+	init)
+		process_init_tool "$1"
+		;;
+	status)
+		process_status_tool "$1"
+		;;
+	*)
+		process_install_tool "$1"
+		;;
+	esac
 }
 
 agents_contains_tool() {
@@ -1023,17 +1043,26 @@ update_agents_managed_block() {
 	log_success "Updated the managed development-tools block in $AGENTS_PATH"
 }
 
-print_summary() {
+print_summary_rows() {
 	local tool_name=""
 	local result_name=""
 	local result_detail=""
 
-	printf '\n%s\n' 'Development-tool summary:'
 	for tool_name in "${TOOL_NAMES[@]}"; do
 		result_name="${TOOL_RESULTS[$tool_name]:-skipped}"
 		result_detail="${TOOL_RESULT_DETAILS[$tool_name]:-not processed}"
 		printf '  %-10s %-9s %s\n' "$tool_name" "$result_name" "$result_detail"
 	done
+}
+
+print_summary() {
+	printf '\n%s\n' 'Development-tool summary:'
+	print_summary_rows
+}
+
+print_status_summary() {
+	printf '\n%s\n' 'Development-tool status:'
+	print_summary_rows
 }
 
 parse_args() {
@@ -1045,7 +1074,7 @@ parse_args() {
 
 	while (($# > 0)); do
 		case "$1" in
-			install|init)
+			install|init|status)
 				if [[ "$mode_seen" -eq 1 ]]; then
 					log_error "Only one mode may be specified"
 					return 2
@@ -1071,7 +1100,7 @@ parse_args() {
 		shift
 	done
 
-	if [[ "$DEV_TOOLS_MODE" == "init" && "$GLOBAL_INSTALL" -eq 1 ]]; then
+	if [[ ("$DEV_TOOLS_MODE" == "init" || "$DEV_TOOLS_MODE" == "status") && "$GLOBAL_INSTALL" -eq 1 ]]; then
 		log_error "The --global option is only valid with install mode"
 		return 2
 	fi
@@ -1099,6 +1128,8 @@ main() {
 		return 0
 	fi
 
+	TOOL_FAILURE_COUNT=0
+	STATUS_UNAVAILABLE_COUNT=0
 	prepare_known_tool_paths
 	for tool_name in "${TOOL_NAMES[@]}"; do
 		process_tool "$tool_name"
@@ -1108,6 +1139,14 @@ main() {
 		if ! update_agents_managed_block; then
 			agents_status=1
 		fi
+	fi
+
+	if [[ "$DEV_TOOLS_MODE" == "status" ]]; then
+		print_status_summary
+		if [[ "$STATUS_UNAVAILABLE_COUNT" -ne 0 ]]; then
+			return 1
+		fi
+		return 0
 	fi
 
 	print_summary

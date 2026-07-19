@@ -287,6 +287,7 @@ decisions:
           decision: >
             templates/dev-tools.sh のユーザー向け warning、error、success は install.sh と同じラベル、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けで出力し、成功状態には log_success を使う。
             ログではないコマンド置換の戻り値、プロンプト、構造化サマリー、AGENTS.mdやfixtureの内容生成は log_* に変換せず、必要に応じてデータ出力関数へ分離する。
+            install と status のsummary結果行はモードに依存しない共通のデータ出力関数で描画し、summaryのタイトル表示と各モードの終了status判定はモード側で行う。
             テストのfixture生成や診断出力は本番ログ契約と混同しない。
           status: "✅️Implementation Approved"
           sub_decisions: []
@@ -300,9 +301,9 @@ decisions:
 
         - id: installer-011-15-mode-selection
           decision: >
-            補助スクリプトは dev-tools.sh [install|init] [--global] [--debug] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行う。
+            補助スクリプトは dev-tools.sh [install|init|status] [--global] [--debug] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行い、status は現在のCLI状態だけを検証する。
             --global と --debug は引数の位置を問わず受け付け、同じflagの複数指定は冪等に扱う。--debug はこの補助スクリプトの一回限りの診断指定であり、環境変数による代替指定は提供しない。
-            --global は install との組み合わせだけを許可し、init との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備だけを行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug を渡す契約はこの決定に含めない。
+            --global は install との組み合わせだけを許可し、init または status との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備だけを行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug を渡す契約はこの決定に含めない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -318,6 +319,7 @@ decisions:
         - id: installer-011-17-failure-diagnostics
           decision: >
             install と init の外部コマンド失敗、および導入後のコマンド検証失敗は、後続ツールの処理を継続しつつ、対象ツールの結果・error・最終summaryに実行コマンドと終了コードを記録し、補助スクリプト全体は失敗を反映した非0を返す。
+            status の `--version` 検証で利用不能な対象も、検証詳細を結果へ残し、全対象の確認を継続したうえで最終summary表示後に非0を返す。
             dev-tools.sh に --debug が明示されたときだけ、外部install/initコマンドと導入後検証コマンドの実行前traceを stderr へ [🔵DEBUG] ラベルで出力する。uv tool route、Serenaのserver-side init、MCP server CLI検証もこの診断契約に含める。
             --debug がない通常実行と DEV_TOOLS_DEBUG 環境変数だけを設定した実行ではtraceを出力せず、既存の標準出力・標準エラーのwarning／error／successログ契約を変更しない。
           status: "✅️Implementation Approved"
@@ -335,4 +337,13 @@ decisions:
             Serenaの明示的な init は `serena init` を一回実行し、`serena start-mcp-server --help` でstdio MCP server起動CLIの存在を検証するまでとする。helper自身はMCP serverを長時間起動・常駐させず、クライアント設定、project create、project index、HTTP daemon/service化も行わない。
             `serena init` がSerena自身のMCP server実行に必要なユーザー側runtime設定を `~/.serena` 等へ作成することだけを許可する限定例外とし、クライアント設定や他プロジェクトへの設定適用は許可しない。
           status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-20-status-mode
+          decision: >
+            status は対象ツールの現在状態を表示する読み取り専用モードとし、現在の対象順で全ツールに対して既存の `find_tool_command` による実行可能性と `--version` 検証だけを行う。検証成功は `present`、検出またはversion検証が完了しない対象は `unavailable` とし、検証コマンド・終了コードを結果詳細へ残す。
+            status はprompt、install、init、project設定、AGENTS.md更新、永続的なPATH・manager・agent設定を行わず、全対象を処理してからsummaryの結果行を表示する。1件でも `unavailable` があれば、summary表示後に補助スクリプト全体の終了statusを1とする。
+            `summary` はstatusの公開aliasにせず、`status --global` は引数エラーとする。`--debug` はstatusのversion検証traceに限り利用でき、Linux/WSL判定と現在プロセス内のPATH準備は既存契約を維持する。
+          status: "✅️Implementation Approved"
+          link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []

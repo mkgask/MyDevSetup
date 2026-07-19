@@ -428,12 +428,26 @@ test_mode_parsing_and_logging() {
 	assert_equal 'init' "$DEV_TOOLS_MODE" 'init mode with debug flag' || return 1
 	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state for init mode' || return 1
 
+	if ! parse_args status --debug; then
+		fail_test 'debug flag was rejected for status mode'
+		return 1
+	fi
+	assert_equal 'status' "$DEV_TOOLS_MODE" 'status mode with debug flag' || return 1
+	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state for status mode' || return 1
+
 	if parse_args init --global; then
 		fail_test 'init --global was accepted'
 	else
 		parse_status="$?"
 	fi
 	assert_equal '2' "$parse_status" 'init --global parse status' || return 1
+
+	if parse_args status --global; then
+		fail_test 'status --global was accepted'
+	else
+		parse_status="$?"
+	fi
+	assert_equal '2' "$parse_status" 'status --global parse status' || return 1
 
 	warning_output="$(NO_COLOR=1 log_warning warning)"
 	error_output="$(NO_COLOR=1 log_error error 2>&1)"
@@ -442,8 +456,77 @@ test_mode_parsing_and_logging() {
 	assert_equal '[❌️ERROR] error' "$error_output" 'error log contract' || return 1
 	assert_equal '[✅️SUCCESS] success' "$success_output" 'success log contract' || return 1
 	print_usage > "$usage_output_file"
-	assert_contains 'dev-tools.sh [install|init] [--global] [--debug]' "$usage_output_file" 'document debug flag' || return 1
+	assert_contains 'dev-tools.sh [install|init|status] [--global] [--debug]' "$usage_output_file" 'document status and debug flags' || return 1
 	assert_not_contains 'DEV_TOOLS_DEBUG' "$usage_output_file" 'remove debug environment variable documentation' || return 1
+}
+
+test_status_mode() {
+	local output=""
+	local helper_status=0
+	local agents_snapshot=""
+
+	prepare_mock_environment status-unavailable
+	install_failed_tool_stubs
+	write_mock_command "$MOCK_BIN/python3" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/ruby" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/uv" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'exit 1'
+	agents_snapshot="$(mktemp)"
+	cp "$MOCK_AGENTS" "$agents_snapshot"
+
+	if output="$(run_helper_mode status)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '1' "$helper_status" 'status reports unavailable tools' || return 1
+	assert_contains 'Development-tool status:' "$MOCK_ROOT/output.log" 'status title' || return 1
+	assert_contains 'python     present' "$MOCK_ROOT/output.log" 'status reports available python' || return 1
+	assert_contains 'ruby       present' "$MOCK_ROOT/output.log" 'status reports available ruby' || return 1
+	assert_contains 'uv         present' "$MOCK_ROOT/output.log" 'status reports available uv' || return 1
+	assert_contains 'rg         unavailable' "$MOCK_ROOT/output.log" 'status reports unavailable rg' || return 1
+	assert_contains 'rtk        unavailable' "$MOCK_ROOT/output.log" 'status reports version failure' || return 1
+	assert_contains 'codegraph  unavailable' "$MOCK_ROOT/output.log" 'status reports missing codegraph' || return 1
+	assert_contains 'serena     unavailable' "$MOCK_ROOT/output.log" 'status reports missing Serena' || return 1
+	assert_contains 'command: rtk --version' "$MOCK_ROOT/output.log" 'status preserves version diagnostics' || return 1
+	assert_not_contains 'Choose an installation method' "$MOCK_ROOT/output.log" 'status does not prompt' || return 1
+	assert_not_contains 'install' "$MOCK_LOG" 'status does not install tools' || return 1
+	assert_not_contains 'init' "$MOCK_LOG" 'status does not initialize tools' || return 1
+	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'status changed AGENTS.md' || return 1
+
+	if output="$(run_helper_with_inputs '' status --debug)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '1' "$helper_status" 'debug status preserves unavailable exit status' || return 1
+	assert_contains '[🔵DEBUG] Running: python3 --version' "$MOCK_ROOT/output.log.stdout" 'status emits version trace with explicit debug flag' || return 1
+	rm -f "$agents_snapshot"
+
+	prepare_mock_environment status-available
+	for command_name in python3 ruby rg rtk codegraph uv serena; do
+		write_mock_command "$MOCK_BIN/$command_name" \
+			'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+			'exit 1'
+	done
+	agents_snapshot="$(mktemp)"
+	cp "$MOCK_AGENTS" "$agents_snapshot"
+
+	if output="$(run_helper_mode status)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'status succeeds when all tools are available' || return 1
+	assert_contains 'Development-tool status:' "$MOCK_ROOT/output.log" 'status title for available tools' || return 1
+	assert_not_contains 'unavailable' "$MOCK_ROOT/output.log" 'status has no unavailable tools' || return 1
+	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'successful status changed AGENTS.md' || return 1
+	rm -f "$agents_snapshot"
 }
 
 write_init_tool_mocks() {
@@ -566,6 +649,7 @@ run_test 'uv dependency failure' test_uv_dependency_failure
 run_test 'debug flag and verification failure' test_debug_flag_and_verification_failure
 run_test 'default routes and skip selection' test_default_route_and_skip_selection
 run_test 'mode parsing and logging' test_mode_parsing_and_logging
+run_test 'status mode' test_status_mode
 run_test 'project initialization mode' test_project_init_mode
 
 printf '%s\n' "Passed $PASS_COUNT focused dev-tools tests."
