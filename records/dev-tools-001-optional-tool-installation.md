@@ -258,3 +258,48 @@ Append rules:
 
 ### Entry 0026 (2026-07-19T09:37:47Z)
 - Validation correction: Entry 0025の旧参照に関する記述を補足する。実装ファイルでは `DEV_TOOLS_DEBUG` と `[DEBUG] Running:` を参照しないが、`tests/dev-tools.test.sh` には環境変数だけではtraceを出さないことを検証する負のfixtureと、旧ラベルが出ないことを検証するassertが意図的に残る。これはactive decisionの「環境変数単独ではtraceを出さない」を固定するテストであり、terminology driftではない。
+
+### Entry 0027 (2026-07-19T00:00:00Z)
+- Why now: install対象へ `uv` と Serena を追加する候補が出た。両方のCLI導入は許可する一方、`uv init` のようなPythonプロジェクト生成を一般プロジェクトの `init` で実行しない境界を先に確定する必要がある。
+- Active baseline: 対象は `installer-011-1-tool-order-and-prompt`、`installer-011-2-installation-backends`、`installer-011-3-command-and-version-contract`、`installer-011-4-third-party-cli-scope`、`installer-011-6-agents-tool-record`、`installer-011-8-install-method-selection`、`installer-011-15-mode-selection`、`installer-011-16-project-init-scope`、`installer-011-17-failure-diagnostics`。現在の実装は `TOOL_NAMES` がinstall、init、summary、AGENTS.md記録の全対象を兼ね、`process_init_tool` は `rtk` と `codegraph` だけを初期化対象としている。
+- Broad-scan findings:
+  - `templates/dev-tools.sh` の新規対象追加は、コマンド検出候補、導入経路対応表、既定route、実行順、結果summary、AGENTS.md管理ブロック、init分岐、テストのroute期待値とprompt数へ影響する。Serenaをuvより前に処理すると、同一実行で導入したuvをSerenaの導入依存として使えないため、対象順序にも依存関係がある。
+  - uv公式資料はLinux向けstandalone installerを `curl -LsSf https://astral.sh/uv/install.sh | sh` で導入できること、`uv tool install` はPython CLIを分離環境へ永続導入し、実行ファイルをbin directoryへ公開することを示している。既存契約のshell起動ファイル非変更を維持するには、uvの導入後にPATHを現在のプロセスだけで再評価する必要がある。
+  - Serena公式Quick Startは `uv tool install -p 3.13 serena-agent` で導入し、実行コマンドは `serena` とする。これは既存のcurlでinstaller scriptを実行する `official` routeとは異なり、uvを前提とする依存付きの導入経路である。uvが未導入または導入失敗の場合、Serenaを同じ実行で導入できるか、skipまたは失敗として扱うかを明示する必要がある。
+  - Serena公式資料の `serena init` は初回設定・動作確認として案内されるが、グローバル設定は `~/.serena/serena_config.yml` に保存される。プロジェクト単位の設定は `serena project create` で `.serena/project.yml` を生成し、MCPクライアント接続はVS Code、Cursor等のクライアントごとの設定として別途行う。したがって `serena init`、プロジェクト作成・索引、MCP設定を同じ「init」にまとめることはできない。
+  - uvの `uv init` は現在ディレクトリをPythonプロジェクトとして生成する操作であり、既存の `init` 契約が対象プロジェクトで必要な初期設定だけを行う方針であることから、uvを `init` 処理対象に含めない候補は既存の自動初期化なし・不要な変更を行わない契約と整合する。
+- Focus areas:
+  - install対象へ `uv` と `serena` を追加する際の対象順序と、Serenaのuv依存を既存routeモデルへどう表現するか。
+  - `uv` はinstall時だけ処理し、init時は明示的に「初期設定不要」としてskipする契約。`uv init`、`uv sync`、virtualenv作成などのPythonプロジェクト変更は今回のinitに含めない。
+  - Serenaのinstall後に実行する初期設定を `serena init`、`serena project create`、MCPクライアント設定のどこまでとするか。特に既存の「initは現在プロジェクトに限定し、global設定や他プロジェクトへ適用しない」契約との整合を確認する。
+  - uvのstandalone installerとSerenaの `uv tool install` で、shell起動ファイルやクライアント設定を永続変更せず、実行中PATHだけを更新する方法、および`--global`時の導入スコープを分離する。
+- Explicit exclusions: この議論では `uv init`、uvによるPython環境・依存関係の作成、SerenaのMCPクライアント設定、Serenaのプロジェクト索引作成、shell起動ファイルの変更、コード・テスト・`DECISIONS.yml`の更新を行わない。Serenaの導入依存を理由にuvのinstallを暗黙同意扱いにはしない。
+- Candidate direction: `TOOL_NAMES`へ `uv` と `serena` を追加する候補を採用し、uvをSerenaより先に処理する。uvはinstall時にCLI本体を導入・検証し、init時は常にskipする。Serenaはuvが利用可能な場合に `uv tool install -p 3.13 serena-agent` で導入し、`serena`を検証する。Serenaのinitは必要性を認めつつ、`serena init`がグローバル設定を作ることと、プロジェクト設定・MCP設定が別操作であることを踏まえ、実行コマンドと許可スコープをvalidationで確定する。
+- Current conclusion: uvのinstall対象化とinit非対象化は既存のmode境界に沿う。Serenaはuv依存のinstall対象として追加できるが、既存の独立route・init契約へそのまま押し込むと、依存順序、PATH、global scope、`~/.serena`変更、MCP設定の責務が不明確になるため、専用の導入・初期化契約が必要である。
+- Next validation target: uv standalone installerと `uv tool install` のPATH・永続設定挙動、Serena `serena init` と `serena project create` のスコープ差、uv失敗時のSerena処理、`--global`で許可するrouteを公式資料と既存decisionへ照合する。検証後、uv install-only、Serena install/init境界、依存失敗時の結果、AGENTS.md記録対象を独立したdecisionまたはsub-decisionとして昇格できるか判定する。
+- Promotion to DECISIONS.yml: pending（今回の議論では記録のみ更新し、uv/Serenaのbinding contract、コード、テストは変更しない）。
+
+### Entry 0028 (2026-07-19T00:00:01Z)
+- Clarification: Serenaのクライアント側設定（VS Code、Cursor、Copilot等のMCP設定ファイルや接続登録）は今回の対象外とし、`init`ではSerenaのMCPサーバー側を利用可能な状態まで準備する。
+- Official boundary: Serenaの標準stdioモードでは、MCPサーバーはクライアントが子プロセスとして `start-mcp-server` を起動し、stdin/stdoutで通信する。したがって `init`自身がサーバーを常駐起動して「待ち受け続ける」処理は行わない。HTTPモードの常駐サーバーやsystemd等のサービス化は別スコープとする。
+- Candidate init behavior: Serenaが利用可能な場合、`init`で `serena init` を一回実行して初期化と動作確認を行い、`serena start-mcp-server --help` 等でMCPサーバー起動CLIの存在も検証する。`serena project create`、`serena project index`、MCPクライアント設定は自動実行しない。後続クライアントは、必要なcontext・project指定を持つ `serena start-mcp-server` の起動コマンドを自身の設定へ登録する。
+- Scope finding: 公式資料では `serena init` が `~/.serena/serena_config.yml` のようなユーザー側設定を初回作成し得る一方、プロジェクト設定・索引とクライアント接続は別操作である。よってこの候補を採用する場合、既存の `installer-011-16-project-init-scope` に対し「Serena自身のMCPサーバー実行に必要なユーザー側ランタイム設定は許可するが、MCPクライアント設定・他プロジェクトへの設定適用は行わない」という限定例外を明示する必要がある。
+- Validation result: pending — 「クライアント設定なしでサーバー側を初期化する」方向は責務分離に適合するが、`serena init`が作成する設定の実体、`start-mcp-server --help`の検証価値、init失敗時の継続・非0終了、ユーザー側設定変更の許可境界をdiscussion-validationで確認する。
+- Promotion to DECISIONS.yml: pending（今回もコード、テスト、`DECISIONS.yml`は変更しない）。
+
+### Entry 0029 (2026-07-19T00:00:02Z)
+- Discussion-validation: PASS。Broad scanは、対象registry・実行順、route対応表と既定route、uv導入後のprocess-scoped PATH、`--global`の導入スコープ、AGENTS.md記録、install/initの失敗継続、既存テストfixture、および公式のuv/Serena導入・MCP実行仕様を対象にしており、今回の変更境界を判断するのに必要な隣接領域を含んでいる。
+- Directional fit: `uv`とSerenaをinstall対象へ追加することはCLI導入という元の目的に適合する。uvは`uv init`、`uv sync`、virtualenv作成を行わずinstall-onlyとし、Serenaはuvを先に処理してから`uv tool install -p 3.13 serena-agent`を実行することで、同一実行内の依存順序を満たす。
+- Contract fit: Serenaのinitは利用可能な`serena`に対する`serena init`と`serena start-mcp-server --help`の検証までに限定する。stdio MCP serverはクライアントが子プロセスとして起動するため、helperは長時間プロセスを起動・常駐させない。`serena project create`、project index、MCPクライアント設定、HTTP daemon/service化、shell起動ファイル変更は実行しない。
+- Scope exception: `serena init`がSerena自身のMCP server実行に必要な`~/.serena`等のユーザー側runtime設定を作成することだけを、`installer-011-16-project-init-scope`の限定例外として明示する。クライアント設定や他プロジェクトへの設定適用は引き続き禁止する。
+- Failure and scope fit: uvまたはSerenaの導入・検証・initが失敗しても後続対象を処理し、対象結果とsummaryへコマンド・終了コードを残して全体を非0にする。`--global`ではuv standalone/tool binを全プロジェクトから利用できる導入経路として扱い、shell設定・manager設定・agent設定の永続変更は行わない。uv依存のSerenaはuvが利用可能な場合だけ候補にする。
+- Promotion targets: `installer-011-1-tool-order-and-prompt`、`installer-011-2-installation-backends`、`installer-011-3-command-and-version-contract`、`installer-011-4-third-party-cli-scope`、`installer-011-6-agents-tool-record`、`installer-011-8-install-method-selection`、`installer-011-11-process-scoped-manager-activation`、`installer-011-14-global-install-scope`、`installer-011-15-mode-selection`、`installer-011-16-project-init-scope`、`installer-011-17-failure-diagnostics`を更新し、必要なuv/Serena固有のbinding ruleは新規sub-decisionとして追加する。
+- Remaining non-binding risk: Serenaの将来バージョンが`serena init`で作成する具体的なユーザー側設定ファイルを変更する可能性は、公式CLIに委譲する範囲の実装リスクとして記録する。今回の実装では作成ファイルを直接編集・検査しない。
+- Promotion status: ready。Gate Aの方向性、非ゴール、例外スコープ、失敗契約、promotion対象は明確であり、`DECISIONS.yml`更新へ進める。
+
+### Entry 0030 (2026-07-19T13:50:40Z)
+- Implementation outcome: `templates/dev-tools.sh`へ `uv` と Serena をこの順で追加し、uvは公式standalone installer、Serenaは利用可能なuvに対する `uv tool install -p 3.13 serena-agent` として実装した。uv導入後は `uv tool dir --bin` の結果だけを現在プロセスのPATHへ追加し、shell起動ファイル、manager設定、agent設定は変更しない。
+- Initialization outcome: `init`ではuvをinstall-onlyとして明示的にskipし、Serenaは `serena init` と `serena start-mcp-server --help` だけを実行する。Serenaの常駐起動、HTTP daemon/service化、project create、project index、MCPクライアント設定、uvのPython project/environment操作は実装していない。
+- Failure and recording outcome: uv導入失敗時はSerenaのuv-tool候補を出さず、後続対象の処理を継続して全体を非0にする。uvとSerenaの導入成功時は検証済みの `uv` と `serena` を既存のAGENTS.md管理ブロックへ追記する。
+- Validation: `bash tests/dev-tools.test.sh` は9件、`bash tests/install.test.sh` は5件がpassした。route候補、uv先行、uv依存失敗、init時のuv skip、Serenaのserver-side init、MCP CLIヘルプ、禁止されたproject/index/client/daemon操作の不在をfocused fixtureで確認した。`bash -n templates/dev-tools.sh tests/dev-tools.test.sh tests/install.test.sh install.sh`、editor diagnostics、`ruby`による`DECISIONS.yml` YAML検証、`git diff --check`もpassした。
+- Remaining non-binding risk: Serenaの将来バージョンが `serena init` で作成するユーザー側runtime設定の具体的なファイル構成を変更する可能性は公式CLIへ委譲する。helperはその設定ファイルを直接編集・検査しない。

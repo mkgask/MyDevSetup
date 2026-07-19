@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-TOOL_NAMES=(python ruby rg rtk codegraph)
+TOOL_NAMES=(python ruby rg rtk codegraph uv serena)
 
 declare -A TOOL_COMMANDS=(
 	[python]="python3"
@@ -10,6 +10,8 @@ declare -A TOOL_COMMANDS=(
 	[rg]="rg"
 	[rtk]="rtk"
 	[codegraph]="codegraph"
+	[uv]="uv"
+	[serena]="serena"
 )
 
 declare -A TOOL_RESULTS=()
@@ -30,6 +32,7 @@ MANAGED_BLOCK_END='<!-- END MYDEVSETUP DEV TOOLS -->'
 
 RTK_INSTALLER_URL="https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh"
 CODEGRAPH_INSTALLER_URL="https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh"
+UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 
 print_usage() {
 	cat <<'USAGE'
@@ -158,7 +161,7 @@ tool_command_candidates() {
 		python)
 			printf '%s\n' python3 python
 			;;
-		ruby|rg|rtk|codegraph)
+		ruby|rg|rtk|codegraph|uv|serena)
 			printf '%s\n' "${TOOL_COMMANDS[$tool_name]}"
 			;;
 		*)
@@ -377,6 +380,9 @@ official_installer_url_for_tool() {
 		codegraph)
 		printf '%s' "$CODEGRAPH_INSTALLER_URL"
 		;;
+		uv)
+		printf '%s' "$UV_INSTALLER_URL"
+		;;
 		*)
 			return 1
 			;;
@@ -390,9 +396,27 @@ official_route_available() {
 	official_installer_url_for_tool "$tool_name" >/dev/null
 }
 
+uv_tool_package_for_tool() {
+	case "$1" in
+		serena)
+		printf '%s' serena-agent
+		;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+uv_tool_route_available() {
+	local tool_name="$1"
+
+	command -v uv >/dev/null 2>&1 || return 1
+	uv_tool_package_for_tool "$tool_name" >/dev/null
+}
+
 route_supports_global_scope() {
 	case "$1" in
-		system|nix|official)
+		system|nix|official|uv-tool)
 			return 0
 			;;
 		*)
@@ -441,6 +465,11 @@ append_available_route() {
 				route_available=1
 			fi
 			;;
+		uv-tool)
+			if uv_tool_route_available "$tool_name"; then
+				route_available=1
+			fi
+			;;
 		*)
 			return 0
 			;;
@@ -460,6 +489,7 @@ available_routes_for_tool() {
 	append_available_route "$tool_name" mise
 	append_available_route "$tool_name" asdf
 	append_available_route "$tool_name" official
+	append_available_route "$tool_name" uv-tool
 
 	printf '%s\n' skip
 }
@@ -469,8 +499,11 @@ default_route_for_tool() {
 		python|ruby|rg)
 			printf '%s' system
 			;;
-		rtk|codegraph)
+		rtk|codegraph|uv)
 			printf '%s' official
+			;;
+		serena)
+			printf '%s' uv-tool
 			;;
 		*)
 			printf '%s' skip
@@ -676,6 +709,28 @@ install_with_official() {
 	prepend_path "${HOME:-}/.local/bin"
 }
 
+refresh_uv_tool_path() {
+	local tool_bin_directory=""
+
+	record_operation_command uv tool dir --bin
+	if tool_bin_directory="$(uv tool dir --bin 2>/dev/null)"; then
+		:
+	else
+		return $?
+	fi
+
+	[[ -n "$tool_bin_directory" ]] || return 1
+	prepend_path "$tool_bin_directory"
+}
+
+install_with_uv_tool() {
+	local tool_name="$1"
+	local package_name="$(uv_tool_package_for_tool "$tool_name")"
+
+	run_recorded_command uv tool install -p 3.13 "$package_name" || return $?
+	refresh_uv_tool_path
+}
+
 install_with_route() {
 	local tool_name="$1"
 	local route_name="$2"
@@ -699,6 +754,9 @@ install_with_route() {
 		official)
 		install_with_official "$tool_name"
 		;;
+		uv-tool)
+		install_with_uv_tool "$tool_name"
+		;;
 		*)
 		return 1
 		;;
@@ -716,6 +774,10 @@ run_project_initialization() {
 		codegraph)
 			run_recorded_command "$command_name" install --target=auto --location=local --yes || return $?
 			run_recorded_command "$command_name" init
+		;;
+		serena)
+			run_recorded_command "$command_name" init || return $?
+			run_recorded_command "$command_name" start-mcp-server --help
 		;;
 		*)
 			return 1
@@ -798,7 +860,12 @@ process_init_tool() {
 	local operation_command=""
 
 	case "$tool_name" in
-		rtk|codegraph)
+		rtk|codegraph|serena)
+			;;
+		uv)
+			set_tool_result "$tool_name" skipped "install-only tool"
+			log_info "$tool_name is install-only; skipping project initialization"
+			return 0
 			;;
 		*)
 			set_tool_result "$tool_name" skipped "no project initialization required"

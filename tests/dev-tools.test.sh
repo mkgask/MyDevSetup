@@ -111,12 +111,31 @@ prepare_install_mocks() {
 		'printf "%s\\n" "official codegraph" >> "$MOCK_LOG"' \
 		'printf "%s\\n" "#!/usr/bin/env bash" "exit 0" > "$MOCK_BIN/codegraph"' \
 		'chmod +x "$MOCK_BIN/codegraph"' > "$MOCK_ROOT/installers/codegraph.sh"
-	chmod +x "$MOCK_ROOT/installers/rtk.sh" "$MOCK_ROOT/installers/codegraph.sh"
+	write_mock_command "$MOCK_ROOT/installers/serena-command" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'printf "serena %s\\n" "$*" >> "$MOCK_LOG"' \
+		'if [[ "${1:-}" == "init" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "start-mcp-server" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_ROOT/installers/uv-command" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "tool" && "${2:-}" == "dir" && "${3:-}" == "--bin" ]]; then printf "%s\\n" "$HOME/.local/bin"; exit 0; fi' \
+		'if [[ "${1:-}" == "tool" && "${2:-}" == "install" ]]; then printf "uv %s\\n" "$*" >> "$MOCK_LOG"; cp "$MOCK_ROOT/installers/serena-command" "$HOME/.local/bin/serena"; chmod +x "$HOME/.local/bin/serena"; exit 0; fi' \
+		'exit 1'
+	printf '%s\n' \
+		'#!/bin/sh' \
+		'[ "${MOCK_FAIL_TOOL:-}" = "uv" ] && exit 1' \
+		'mkdir -p "$HOME/.local/bin"' \
+		'printf "%s\\n" "official uv" >> "$MOCK_LOG"' \
+		'cp "$MOCK_ROOT/installers/uv-command" "$HOME/.local/bin/uv"' \
+		'chmod +x "$HOME/.local/bin/uv"' > "$MOCK_ROOT/installers/uv.sh"
+	chmod +x "$MOCK_ROOT/installers/rtk.sh" "$MOCK_ROOT/installers/codegraph.sh" "$MOCK_ROOT/installers/uv.sh"
 
 	write_mock_command "$MOCK_BIN/curl" \
 		'case "$*" in' \
 			'*rtk-ai/rtk*) cat "$MOCK_ROOT/installers/rtk.sh" ;;' \
 			'*colbymchenry/codegraph*) cat "$MOCK_ROOT/installers/codegraph.sh" ;;' \
+			'*astral.sh/uv/install.sh*) cat "$MOCK_ROOT/installers/uv.sh" ;;' \
 			'*) exit 1 ;;' \
 		esac
 }
@@ -172,12 +191,26 @@ test_route_filtering() {
 	routes="$(available_routes_for_tool codegraph)"
 	assert_equal $'official\nskip' "$routes" 'codegraph route filtering' || return 1
 
+	routes="$(available_routes_for_tool uv)"
+	assert_equal $'official\nskip' "$routes" 'uv official route filtering' || return 1
+
+	routes="$(available_routes_for_tool serena)"
+	assert_equal $'skip' "$routes" 'Serena requires uv for route filtering' || return 1
+
+	write_mock_command "$MOCK_BIN/uv" 'exit 0'
+	routes="$(available_routes_for_tool serena)"
+	assert_equal $'uv-tool\nskip' "$routes" 'Serena uv-tool route filtering' || return 1
+	assert_equal 'serena-agent' "$(uv_tool_package_for_tool serena)" 'Serena uv package mapping' || return 1
+
 	GLOBAL_INSTALL=1
 	routes="$(available_routes_for_tool python)"
 	assert_equal $'system\nnix\nskip' "$routes" 'global python route filtering' || return 1
 
 	routes="$(available_routes_for_tool rtk)"
 	assert_equal $'official\nskip' "$routes" 'global rtk route filtering' || return 1
+
+	routes="$(available_routes_for_tool serena)"
+	assert_equal $'uv-tool\nskip' "$routes" 'global Serena route filtering' || return 1
 	GLOBAL_INSTALL=0
 
 	assert_equal 'python' "$(system_package_for_tool python brew)" 'Homebrew Python package' || return 1
@@ -245,20 +278,24 @@ test_interactive_install_and_failure_continuation() {
 	local output=""
 	local prompt_count=0
 	local helper_status=0
+	local uv_install_line=""
+	local serena_install_line=""
 
 	prepare_mock_environment interactive-install
 	install_failed_tool_stubs
 	prepare_install_mocks
 
-	output="$(run_helper_with_inputs $'1\nsystem\n1\nofficial\n1\n')"
+	output="$(run_helper_with_inputs $'1\nsystem\n1\nofficial\n1\n1\n1\n')"
 	prompt_count="$(grep -o 'Choose an installation method' <<< "$output" | wc -l)"
-	assert_equal '5' "$prompt_count" 'prompt exactly once per missing tool' || return 1
+	assert_equal '7' "$prompt_count" 'prompt exactly once per missing tool' || return 1
 	assert_contains 'Development-tool summary:' "$MOCK_ROOT/output.log.stdout" 'print final summary' || return 1
 	assert_contains '- `python`: `python3`' "$MOCK_AGENTS" 'record installed python' || return 1
 	assert_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'record installed ruby' || return 1
 	assert_contains '- `rg`: `rg`' "$MOCK_AGENTS" 'record installed rg' || return 1
 	assert_contains '- `rtk`: `rtk`' "$MOCK_AGENTS" 'record installed rtk' || return 1
 	assert_contains '- `codegraph`: `codegraph`' "$MOCK_AGENTS" 'record installed codegraph' || return 1
+	assert_contains '- `uv`: `uv`' "$MOCK_AGENTS" 'record installed uv' || return 1
+	assert_contains '- `serena`: `serena`' "$MOCK_AGENTS" 'record installed Serena' || return 1
 
 	prepare_mock_environment failure-continuation
 	install_failed_tool_stubs
@@ -268,7 +305,7 @@ test_interactive_install_and_failure_continuation() {
 	DEV_TOOLS_DEBUG=1
 	export DEV_TOOLS_DEBUG
 
-	if output="$(run_helper_with_inputs $'system\nsystem\nsystem\nofficial\nofficial\n')"; then
+	if output="$(run_helper_with_inputs $'system\nsystem\nsystem\nofficial\nofficial\nofficial\nuv-tool\n')"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -283,9 +320,42 @@ test_interactive_install_and_failure_continuation() {
 	assert_not_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'do not record failed tool' || return 1
 	assert_contains 'official rtk' "$MOCK_LOG" 'run official rtk installer' || return 1
 	assert_contains 'official codegraph' "$MOCK_LOG" 'run official codegraph installer' || return 1
+	assert_contains 'official uv' "$MOCK_LOG" 'run official uv installer' || return 1
+	assert_contains 'uv tool install -p 3.13 serena-agent' "$MOCK_LOG" 'install Serena through uv' || return 1
+	uv_install_line="$(grep -n -m1 '^official uv$' "$MOCK_LOG" | cut -d: -f1)"
+	serena_install_line="$(grep -n -m1 '^uv tool install -p 3.13 serena-agent$' "$MOCK_LOG" | cut -d: -f1)"
+	if ! (( uv_install_line < serena_install_line )); then
+		fail_test 'uv was not installed before Serena'
+		return 1
+	fi
 	assert_not_contains 'init' "$MOCK_LOG" 'do not run CLI initialization' || return 1
 
 	unset DEV_TOOLS_DEBUG
+}
+
+test_uv_dependency_failure() {
+	local output=""
+	local helper_status=0
+
+	prepare_mock_environment uv-dependency-failure
+	install_failed_tool_stubs
+	prepare_install_mocks
+	MOCK_FAIL_TOOL=uv
+	export MOCK_FAIL_TOOL
+
+	if output="$(run_helper_with_inputs $'skip\nskip\nskip\nskip\nskip\nofficial\n')"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '1' "$helper_status" 'return failure when uv installation fails' || return 1
+	assert_contains 'uv         failed' "$MOCK_ROOT/output.log.stdout" 'report failed uv installation' || return 1
+	assert_contains 'exit status 1' "$MOCK_ROOT/output.log.stdout" 'report uv failure status' || return 1
+	assert_contains 'curl --proto' "$MOCK_ROOT/output.log.stdout" 'report uv installer command' || return 1
+	assert_contains 'serena     skipped' "$MOCK_ROOT/output.log.stdout" 'skip Serena when uv is unavailable' || return 1
+	assert_not_contains 'uv tool install' "$MOCK_LOG" 'do not install Serena after uv failure' || return 1
+
+	unset MOCK_FAIL_TOOL
 }
 
 test_debug_flag_and_verification_failure() {
@@ -301,7 +371,7 @@ test_debug_flag_and_verification_failure() {
 		'printf "%s\\n" "#!/usr/bin/env bash" "exit 7" > "$MOCK_BIN/$package_name"' \
 		'chmod +x "$MOCK_BIN/$package_name"'
 
-	if output="$(run_helper_with_inputs $'skip\nsystem\nskip\nskip\nskip\n' --debug)"; then
+	if output="$(run_helper_with_inputs $'skip\nsystem\nskip\nskip\nskip\nskip\nskip\n' --debug)"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -385,6 +455,16 @@ write_init_tool_mocks() {
 		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
 		'printf "codegraph %s\\n" "$*" >> "$MOCK_LOG"' \
 		'exit 0'
+	write_mock_command "$MOCK_BIN/uv" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'printf "uv %s\\n" "$*" >> "$MOCK_LOG"' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/serena" \
+		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'printf "serena %s\\n" "$*" >> "$MOCK_LOG"' \
+		'if [[ "${1:-}" == "init" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "start-mcp-server" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'exit 1'
 }
 
 test_project_init_mode() {
@@ -402,10 +482,21 @@ test_project_init_mode() {
 	assert_not_contains 'Choose an installation method' "$MOCK_ROOT/output.log" 'init does not prompt for installation' || return 1
 	grep -Eq '^  rtk[[:space:]]+initialized[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'initialize installed RTK' || return 1
 	grep -Eq '^  codegraph[[:space:]]+initialized[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'initialize installed CodeGraph' || return 1
+	grep -Eq '^  serena[[:space:]]+initialized[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'initialize Serena server runtime' || return 1
 	grep -Eq '^  python[[:space:]]+skipped[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'skip tools without project initialization' || return 1
+	grep -Eq '^  uv[[:space:]]+skipped[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'skip uv during init' || return 1
 	assert_contains 'rtk init' "$MOCK_LOG" 'run local RTK initialization' || return 1
 	assert_contains 'codegraph install --target=auto --location=local --yes' "$MOCK_LOG" 'run local CodeGraph agent setup' || return 1
 	assert_contains 'codegraph init' "$MOCK_LOG" 'run CodeGraph project initialization' || return 1
+	assert_contains 'serena init' "$MOCK_LOG" 'run Serena runtime initialization' || return 1
+	assert_contains 'serena start-mcp-server --help' "$MOCK_LOG" 'verify Serena MCP server command' || return 1
+	assert_not_contains 'uv init' "$MOCK_LOG" 'do not initialize a Python project with uv' || return 1
+	assert_not_contains 'uv sync' "$MOCK_LOG" 'do not sync dependencies during init' || return 1
+	assert_not_contains 'uv venv' "$MOCK_LOG" 'do not create a Python environment during init' || return 1
+	assert_not_contains 'serena project' "$MOCK_LOG" 'do not create a Serena project' || return 1
+	assert_not_contains 'serena index' "$MOCK_LOG" 'do not index a Serena project' || return 1
+	assert_not_contains 'serena daemon' "$MOCK_LOG" 'do not start a Serena daemon' || return 1
+	assert_not_contains 'serena http' "$MOCK_LOG" 'do not start Serena HTTP mode' || return 1
 	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'init changed AGENTS.md through install recording' || return 1
 	rm -f "$agents_snapshot"
 
@@ -436,12 +527,14 @@ test_default_route_and_skip_selection() {
 	install_failed_tool_stubs
 	prepare_install_mocks
 
-	output="$(run_helper_with_inputs $'\n\nskip\n\nskip\n')"
+	output="$(run_helper_with_inputs $'\n\nskip\n\nskip\nskip\n')"
 	assert_contains 'python     installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects python default' || return 1
 	assert_contains 'ruby       installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects ruby default' || return 1
 	assert_contains 'rg         skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves rg uninstalled' || return 1
 	assert_contains 'rtk        installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects rtk default' || return 1
 	assert_contains 'codegraph  skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves codegraph uninstalled' || return 1
+	assert_contains 'uv         skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves uv uninstalled' || return 1
+	assert_contains 'serena     skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves Serena uninstalled' || return 1
 	assert_contains '- `python`: `python3`' "$MOCK_AGENTS" 'record default-installed python' || return 1
 	assert_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'record default-installed ruby' || return 1
 	assert_contains '- `rtk`: `rtk`' "$MOCK_AGENTS" 'record default-installed rtk' || return 1
@@ -469,6 +562,7 @@ run_test 'route filtering' test_route_filtering
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
 run_test 'AGENTS.md managed block' test_agents_block_is_add_only_and_idempotent
 run_test 'interactive install and failure continuation' test_interactive_install_and_failure_continuation
+run_test 'uv dependency failure' test_uv_dependency_failure
 run_test 'debug flag and verification failure' test_debug_flag_and_verification_failure
 run_test 'default routes and skip selection' test_default_route_and_skip_selection
 run_test 'mode parsing and logging' test_mode_parsing_and_logging

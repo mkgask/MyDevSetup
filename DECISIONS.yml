@@ -178,15 +178,17 @@ decisions:
         install.sh の開発用ツール導入フローは Linux/WSL で不足している汎用CLIを任意導入できるようにし、
         既存の AGENTS.md 本文を保護したまま導入成功した新規ツールを処理の最後に記録する。
         既定の install モードはCLI本体の導入だけとし、AI連携設定やプロジェクト索引作成を自動化しない。
-        明示的な init モードでは、導入済みで現在プロジェクトの利用に初期設定が必要なツールについて、公式のプロジェクト設定を実行できる。
+        明示的な init モードでは、導入済みで現在プロジェクトの利用に初期設定が必要なツールについて、公式の初期設定を実行できる。
+        対象には python、ruby、rg、rtk、codegraph、uv、Serena を含める。
       status: "✅️Implementation Approved"
       link: "records/dev-tools-001-optional-tool-installation.md"
       sub_decisions:
         - id: installer-011-1-tool-order-and-prompt
           decision: >
-            不足時の確認対象は python、ruby、rg、rtk、codegraph の順とし、存在するツールは質問せず、
+            不足時の確認対象は python、ruby、rg、rtk、codegraph、uv、Serena の順とし、存在するツールは質問せず、
             未導入のツールだけを各一回ずつの導入方法選択で確認する。選択肢はツールごとの対応表から生成し、
-            codegraph の実行コマンド名は codegraph とする。空入力時の既定導入方法はツールごとに固定する。
+            codegraph、uv、Serena の実行コマンド名はそれぞれ codegraph、uv、serena とする。空入力時の既定導入方法はツールごとに固定する。
+            uv は Serena より先に処理し、Serena の導入依存を同一実行内で満たせる順序を保つ。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -195,7 +197,9 @@ decisions:
             対応環境は Linux/WSL に限定し、導入方法は対象ツールを扱える既存の system、nix、proto、mise、asdf、
             official の経路から選ぶ。nix、proto、mise、asdf は実行可能なコマンドと対象ツールの対応を検出できた場合だけ候補にし、
             system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。マネージャー本体や不足プラグインは自動導入しない。
+            uv は公式standalone installerを使う official route とし、Serena は uv が利用可能な場合だけ `uv tool install` を使う uv-tool route とする。
             --global では全プロジェクトから利用可能な導入先を持つ経路だけを候補にし、該当経路がなければ skip とする。
+            uv が未導入または導入失敗した場合、Serena の uv-tool route は候補にせず、Serenaを暗黙に別経路で導入しない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -203,13 +207,15 @@ decisions:
           decision: >
             python3 は Python の導入済みコマンドとして受け入れ、AGENTS.md には実際に検証できたコマンド名を記載する。
             選択された導入経路は各経路の最新安定版を既定とし、公式インストーラーが対応するツールでは official も選択肢にする。
-            公式の環境変数等によるバージョン固定を妨げず、導入後は実際に検証できた実行コマンドを記録する。
+            uv は `uv`、Serena は `serena-agent` package が提供する `serena` を導入後検証し、公式の環境変数等によるバージョン固定を妨げない。
+            導入後は実際に検証できた実行コマンドを記録する。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
         - id: installer-011-4-third-party-cli-scope
           decision: >
-            既定の install モードでは rtk と codegraph を含む対象ツールのCLI本体だけを配置し、rtk init、codegraph install、codegraph init などの初期設定を自動実行しない。
+            既定の install モードでは rtk、codegraph、uv、Serena を含む対象ツールのCLI本体だけを配置し、rtk init、codegraph install、codegraph init、uv init などの初期設定を自動実行しない。
+            SerenaのMCPクライアント設定、プロジェクト作成、プロジェクト索引、HTTP daemon/service化も自動実行しない。
             明示的な init モードでは、現在プロジェクトで利用するために必要な公式の初期設定をツールごとに実行できる。
             ~/.local/bin のためにシェル設定ファイルを変更せず、導入先の検証に必要なPATH調整は今回の実行中に限定する。
           status: "✅️Implementation Approved"
@@ -227,7 +233,8 @@ decisions:
           decision: >
             install で導入に成功した新規ツールのうち AGENTS.md に未記載のものだけを、全ツール処理の最後に管理ブロックとして冪等に追記する。
             これは既存本文を変更しない add-only 操作として --force なしでも許可し、既存のテンプレート全体上書き保護は維持する。
-            管理ブロックが既にあれば同ブロックだけを更新し、細かな説明は追加しない。明示的な init では、公式ツールが現在プロジェクトで通常行う設定変更をこの install の記録処理とは別に許可する。
+            管理ブロックが既にあれば同ブロックだけを更新し、細かな説明は追加しない。uv と Serena も検証できた `uv` と `serena` のコマンド名で他対象と同じ規則に従う。
+            明示的な init では、公式ツールが現在プロジェクトで通常行う設定変更をこの install の記録処理とは別に許可する。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -242,7 +249,8 @@ decisions:
           decision: >
             各ツールの選択肢には対応表で利用可能と判定された導入方法だけを表示し、常に skip を含める。
             未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。
-            system は Python・Ruby・rg の既存標準経路を既定とし、rtk・codegraph は official を既定とするが、利用可能な別経路を同じ1回の選択で選べる。
+            system は Python・Ruby・rg の既存標準経路を既定とし、rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
+            Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示する。
             選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。
           status: "✅️Implementation Approved"
           sub_decisions: []
@@ -265,7 +273,7 @@ decisions:
           decision: >
             通常の install でマネージャー導入後の検証に必要なPATH変更は現在のinstall.shプロセス内だけに限定し、シェル起動ファイルや
             protoのグローバルpinなどの永続設定を追加しない。--global の install では、全プロジェクトから利用可能な導入経路の検証に必要な一時的PATH・manager activationの拡張だけを許可し、
-            shell起動ファイル、manager設定全体、agent設定の永続変更は行わない。
+            shell起動ファイル、manager設定全体、agent設定の永続変更は行わない。uv standalone installer後はuvの導入先を、Serena導入後は `uv tool dir --bin` の結果を現在プロセスのPATHへ反映して検証する。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -286,7 +294,7 @@ decisions:
         - id: installer-011-14-global-install-scope
           decision: >
             --global は install モードで導入したバイナリを全プロジェクトから利用可能にする導入スコープだけを表し、initの適用範囲、manager設定全体の永続化、agent設定のglobal適用は含めない。
-            --global の候補はそのスコープを実現できる導入経路だけに限定し、init --global はエラーとする。protoのグローバルpin、shell起動ファイル変更、manager設定の永続変更は --global でも行わない。
+            --global の候補はそのスコープを実現できる導入経路だけに限定し、init --global はエラーとする。uv official と Serena uv-tool はユーザー単位のbinへ導入し全プロジェクトから呼び出せるため候補にできるが、protoのグローバルpin、shell起動ファイル変更、manager設定の永続変更は --global でも行わない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -294,14 +302,15 @@ decisions:
           decision: >
             補助スクリプトは dev-tools.sh [install|init] [--global] [--debug] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行う。
             --global と --debug は引数の位置を問わず受け付け、同じflagの複数指定は冪等に扱う。--debug はこの補助スクリプトの一回限りの診断指定であり、環境変数による代替指定は提供しない。
-            --global は install との組み合わせだけを許可し、init との組み合わせは明示的な引数エラーとする。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug を渡す契約はこの決定に含めない。
+            --global は install との組み合わせだけを許可し、init との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備だけを行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug を渡す契約はこの決定に含めない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
         - id: installer-011-16-project-init-scope
           decision: >
             明示的な init は不足バイナリを導入せず、現在プロジェクトで利用可能かつ初期設定が必要なツールについて、公式CLIが通常行うプロジェクト単位の設定を追加確認なしで実行する。
-            初期設定不要または未導入のツールはスキップし、公式手順が必要とする現在プロジェクトのAGENTS.md・agent設定・プロジェクト索引などの変更は許可するが、globalな設定や他プロジェクトへの適用は行わない。
+            初期設定不要または未導入のツールはスキップし、uvは常に初期設定不要として `uv init`、`uv sync`、virtualenv作成を行わない。
+            Serenaは利用可能な場合だけ `serena init` を実行し、`serena start-mcp-server --help` でMCP server起動CLIを検証する。これはSerena自身のMCP server実行に必要なユーザー側runtime設定を作る限定例外であり、MCPクライアント設定、`serena project create`、project index、他プロジェクトへの設定適用は行わない。
             個別の初期設定失敗では後続ツールを継続し、初期設定が安全に非対話実行できない場合は無理に実行せず失敗またはスキップとして記録する。
           status: "✅️Implementation Approved"
           sub_decisions: []
@@ -309,6 +318,21 @@ decisions:
         - id: installer-011-17-failure-diagnostics
           decision: >
             install と init の外部コマンド失敗、および導入後のコマンド検証失敗は、後続ツールの処理を継続しつつ、対象ツールの結果・error・最終summaryに実行コマンドと終了コードを記録し、補助スクリプト全体は失敗を反映した非0を返す。
-            dev-tools.sh に --debug が明示されたときだけ、外部install/initコマンドと導入後検証コマンドの実行前traceを stderr へ [🔵DEBUG] ラベルで出力する。--debug がない通常実行と DEV_TOOLS_DEBUG 環境変数だけを設定した実行ではtraceを出力せず、既存の標準出力・標準エラーのwarning／error／successログ契約を変更しない。
+            dev-tools.sh に --debug が明示されたときだけ、外部install/initコマンドと導入後検証コマンドの実行前traceを stderr へ [🔵DEBUG] ラベルで出力する。uv tool route、Serenaのserver-side init、MCP server CLI検証もこの診断契約に含める。
+            --debug がない通常実行と DEV_TOOLS_DEBUG 環境変数だけを設定した実行ではtraceを出力せず、既存の標準出力・標準エラーのwarning／error／successログ契約を変更しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-18-uv-and-serena-installation
+          decision: >
+            uv はAstralのstandalone installerを使う official route で導入し、Serenaはuvが利用可能な場合だけ `uv tool install -p 3.13 serena-agent` で導入する。
+            Serenaの導入依存を理由にuvの導入を暗黙同意扱いにせず、uvをskipまたは導入失敗した場合はSerenaを別経路で導入しない。両者の導入・検証成功後はAGENTS.md管理ブロックへ実行可能なコマンドを記録する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+        - id: installer-011-19-serena-server-initialization
+          decision: >
+            Serenaの明示的な init は `serena init` を一回実行し、`serena start-mcp-server --help` でstdio MCP server起動CLIの存在を検証するまでとする。helper自身はMCP serverを長時間起動・常駐させず、クライアント設定、project create、project index、HTTP daemon/service化も行わない。
+            `serena init` がSerena自身のMCP server実行に必要なユーザー側runtime設定を `~/.serena` 等へ作成することだけを許可する限定例外とし、クライアント設定や他プロジェクトへの設定適用は許可しない。
           status: "✅️Implementation Approved"
           sub_decisions: []
