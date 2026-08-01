@@ -345,3 +345,47 @@ Append rules:
 - Validation outcome: `bash -n templates/dev-tools.sh tests/dev-tools.test.sh tests/install.test.sh install.sh`、editor diagnostics、`ruby`による`DECISIONS.yml` YAML検証（49 unique ids）、`git diff --check` がpassした。配布テストもstatus追加によるinstall.shの退行なしを確認した。
 - Decision alignment: `installer-011-13`、`installer-011-15`、`installer-011-17`、`installer-011-20` の実装契約を満たしたため、これらのstatusを `✅️Implementation Approved` へ更新する。今回の実装で新しいbinding constraintは発生していない。
 - Remaining non-binding risk: 非Linux環境では既存のLinux/WSL warning-and-skipを維持するためstatusのツール検証は行われず、対応環境での「unavailableなら1」という契約とは別に既存の非対応環境動作が適用される。
+
+### Entry 0034 (2026-08-01T15:11:13Z)
+- Why now: `*_tool_for_tool` の静的な対応表は、manager側が新しいツールを扱えるようになったときに MyDevSetup 側の更新を要求する。対応可否の判断を各managerの読み取り問い合わせへ移せるかを確認する。
+- Active baseline: 対象は `installer-011-2-installation-backends`、`installer-011-8-install-method-selection`、`installer-011-11-process-scoped-manager-activation`、および既存の「manager本体・不足pluginを自動導入しない」契約である。`templates/dev-tools.sh` では `*_for_tool` が識別子変換と対応表を兼ね、`*_route_available` が候補表示前の環境判定を行う。
+- Broad-scan findings:
+  - `mise registry NAME` は公式に read-only とされ、指定名のregistry解決結果を返す。未知名の終了statusを候補判定に使えるため、`mise` は manager側の問い合わせを利用できる。ただし `rg` などの実行名とregistry名が異なる場合のalias変換は残す必要がある。
+  - Nixは `nix search` の曖昧な検索ではなく、`nix eval --read-only --raw nixpkgs#<attribute>.name` のような完全な属性評価を候補にできる。検索結果の説明文や広いregex検索は、候補列挙の判定として不安定または高コストなので採用しない。
+  - asdfの `asdf plugin list` は現在登録済みのpluginだけを返す。一方 `asdf plugin list all` はremote short-name repositoryを参照・同期し得る。remoteで存在するだけのpluginは現行の「不足pluginを自動導入しない」契約では install route として実行可能とは言えないため、installed-only判定を維持する。
+  - protoの `proto install` は導入を開始し、`proto versions` はremote release manifestを解決する。`proto plugin search` はcommunity registryへ問い合わせ、`proto plugin list` と `proto plugin info` もtoolをloadして設定・version・inventoryを解決するため、反復する軽量な capability predicate としての安定した契約を確認できない。protoは今回、静的な対応対象と識別子変換を残す。
+  - system package manager は apt/dnf/pacman等で問い合わせコマンドとパッケージ名・権限・repository semanticsが異なり、今回の対象に共通する読み取りpredicateを確認できていない。systemの既存package identifier mappingは維持し、manager別の安全な問い合わせを確認できた場合に別途拡張する。
+- Focus areas:
+  - capability detectionとidentifier normalizationを分離し、`mise` と Nix はmanager側のread-only問い合わせへ置き換える。
+  - asdfは既存pluginだけを候補にする安全境界を維持しつつ、tool名または必要なaliasに一致するinstalled pluginを直接判定する。
+  - proto、system、official、uv-toolの既存ルート実行契約、route order、`skip` 常設、process-local activation、manager/pluginの自動導入禁止を変更しない。
+  - route predicateのstdoutは候補リストへ流さず、stderrも通常実行で表示しない。問い合わせは候補列挙から繰り返し呼ばれるため、インストール・初期化・永続設定変更を行わない。
+- Explicit exclusions: protoの`versions`・`plugin search`・`plugin info`を候補判定には使わない。asdfのremote plugin一覧を使った新規plugin登録や自動導入、system package managerの横断的なremote検索、manager本体の導入、shell起動ファイル・manager設定の永続変更、install実行分岐の再設計は今回の対象外とする。
+- Candidate direction: `mise registry NAME` とNixの完全属性評価をroute availabilityへ追加し、現在の対応表は必要なmanager identifierのalias normalizationとして縮小する。asdfはinstalled plugin listを基に候補を解決し、インストール時にも同じplugin identifierを使う。protoとsystemは安全な共通問い合わせが確認できるまで現行の明示対応を保つ。
+- Current conclusion: 全managerを一つの問い合わせ方式へ揃えるのは不適切だが、managerごとに安全なread-only契約がある範囲では静的な対応可否を削減できる。今回の実装候補は `mise`、Nix、installed-only asdfであり、protoは保留、systemは別議論とする。
+- Next validation target: `mise registry` の既知名・未知名の終了status、Nix exact attribute probeの引数と終了status、asdf installed pluginの候補解決をmockで確認する。既存route order、alias、候補出力の純粋性、install時のidentifier再利用、no-plugin-install契約も同時に検証する。
+- Promotion to DECISIONS.yml: pending（discussion-validationで、`installer-011-2` と `installer-011-8` にmanager-specific read-only probing、alias保持、asdf installed-only、proto/systemの明示的保留を追加する必要性を確認する）。
+- Evidence / references (optional): mise CLI registry documentation、Nix `search`/`eval` documentation、asdf plugin command documentation、proto CLI source (`crates/cli/src/app.rs`、`crates/cli/src/commands/plugin/{list,info,search}.rs`)。
+
+### Entry 0035 (2026-08-01T15:11:14Z)
+- Discussion-validation: broad scanは `templates/dev-tools.sh` の対応表・route predicate・install分岐、mock test、`DECISIONS.yml` の既存契約、mise/Nix/asdfの公式CLI仕様、protoのCLI sourceを含み、候補判定の副作用と不足plugin policyを比較するのに必要な範囲を覆っている。
+- Focus validation: `mise`、Nix、installed-only asdfへ絞ることは、read-only問い合わせが確認できたmanagerだけを採用するという調査結果から導かれる。protoのremote/plugin解決とsystem package managerの異なるrepository semanticsを保留した理由も明示されており、prematureな全体置換にはなっていない。
+- Directional fit: manager更新への追従性を高める目的に対し、`*_for_tool` のalias変換を維持しながら対応可否をmanager側へ寄せる方向は適合する。静的対応を完全に削除せず、確認できないmanagerの既存挙動を保つため、今回の変更が動的問い合わせのない環境を不必要に壊すことも避けられる。
+- Contract fit: 問い合わせは導入・初期化・plugin登録・永続設定変更を行わず、manager本体と不足pluginの自動導入禁止、`skip` 常設、global候補制限、process-local activation、既存route orderを維持する。probeの非0や未知名はroute非表示として扱い、通常ログや候補stdoutへ診断出力を混入させない。
+- Hidden bindings: identifier normalizationとcapability detectionを別責務として保持する必要がある。asdfはinstalled pluginだけを有効なrouteとし、remote一覧だけでは候補にしない。protoとsystemは今回の実装で動的対応を主張せず、将来安全な問い合わせ契約が確認された場合に別途議論する。
+- Validation result: PASS。候補方向は元の目的、現在の不変条件、非ゴール、失敗時の安全側挙動に適合し、実装対象と保留対象の境界も明確である。
+- Promotion targets: `installer-011-2-installation-backends` にmanager-specific read-only capability probing、probe失敗時のroute非表示、asdf installed-only、proto/system保留を追加する。`installer-011-8-install-method-selection` にmanager queryで確認された候補だけを表示する条件とalias normalizationの分離を追加する。必要なroute predicateのquiet/non-mutating契約は同じdecisionのsub-decisionとして保持する。
+- Promotion to DECISIONS.yml: ready（上記2 decisionの契約更新後に実装へ進む）。
+
+### Entry 0036 (2026-08-01T15:24:00Z)
+- Implementation result: `templates/dev-tools.sh` のNix routeは候補identifierを `nix eval --read-only --raw nixpkgs#<identifier>.name` で確認し、mise routeは `mise registry NAME` でregistryを確認するよう更新した。どちらも未知のtool名を直接問い合わせ、`python` と `rg` だけmanager固有のalias候補を持つ。
+- Implementation result: asdf routeは `asdf plugin list` のinstalled inventoryだけを読み、tool名または `rg -> ripgrep` のaliasに一致するpluginをinstall identifierとして再利用する。remote plugin一覧、plugin登録、install、設定変更は行わない。proto/systemの既存明示mappingとinstall実行は変更していない。
+- Test result: `tests/dev-tools.test.sh` は11件、`tests/install.test.sh` は15件がpassした。新しいfixtureはmanagerが新しい `codegraph` を対応した場合のroute追加、alias解決、probe stdoutの抑制、asdf remote plugin queryの不在を確認する。
+- Validation evidence: helper／installerのfocused suite、4ファイルの `bash -n`、変更ファイルのeditor diagnostics、`git diff --check` がpassした。Ruby YAML parserは環境に存在せず実行できなかったが、DECISIONS.ymlのeditor diagnosticsと既存のdecision-id構造検査は通過した。
+- Promotion to DECISIONS.yml: `installer-011-2-installation-backends` と `installer-011-8-install-method-selection` を `⚠️Implementing` として実装中へ更新した。
+
+### Entry 0037 (2026-08-01T15:24:01Z)
+- Implementation-validation: executable checksはdynamic capability fixtureを含むhelper 11件、installer 15件、Bash syntax、editor diagnostics、空白差分でPASSだった。変更されたコード、テスト、decision contractは、mise/Nixのread-only probe、asdf installed-only、alias normalization、proto/system保留の境界で一致している。
+- Terminology and record hygiene: `capability probe`、`read-only`、`installed-only`、`alias normalization` の表現を `DECISIONS.yml`、record、test期待値で揃えた。`installer-011` のlinkは本記録を指し、binding ruleはrecordだけに残っていない。
+- Status result: `installer-011-2-installation-backends` と `installer-011-8-install-method-selection` を `✅️Implementation Approved` へ更新する。今回の実装で新しいbinding constraintは発生していない。
+- Remaining non-binding risk: 実際のNix/mise/asdf managerを使うlive installは実行していない。proto/systemの動的capability queryは安全な共通契約が確認できるまで対象外であり、将来対応する場合は別議論とする。ShellCheckとRuby YAML parserは環境にないため実行していない。

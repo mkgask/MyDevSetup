@@ -170,9 +170,14 @@ test_route_filtering() {
 	prepare_mock_environment route-filtering
 	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
 	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
-	write_mock_command "$MOCK_BIN/nix" 'exit 0'
+	write_mock_command "$MOCK_BIN/nix" \
+		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "eval" ]]; then case "$*" in *"nixpkgs#python3.name"*|*"nixpkgs#ruby.name"*|*"nixpkgs#ripgrep.name"*) exit 0 ;; *) exit 1 ;; esac; fi' \
+		'exit 1'
 	write_mock_command "$MOCK_BIN/proto" 'exit 0'
-	write_mock_command "$MOCK_BIN/mise" 'exit 0'
+	write_mock_command "$MOCK_BIN/mise" \
+		'if [[ "${1:-}" != "registry" ]]; then exit 1; fi' \
+		'[[ "${2:-}" == "python" || "${2:-}" == "ruby" || "${2:-}" == "ripgrep" || "${2:-}" == "rtk" ]]'
 	write_mock_command "$MOCK_BIN/asdf" \
 		'if [[ "${1:-}" == "plugin" ]]; then printf "%s\\n" python ruby ripgrep rtk; fi'
 	write_mock_command "$MOCK_BIN/curl" 'exit 0'
@@ -223,6 +228,38 @@ test_route_filtering() {
 	install_with_proto python
 	assert_contains 'install python latest --yes' "$MOCK_LOG" 'proto installs without persistent pinning' || return 1
 	assert_not_contains '--pin' "$MOCK_LOG" 'proto does not write a global pin' || return 1
+}
+
+test_manager_capability_probes() {
+	local routes=""
+
+	prepare_mock_environment manager-capability-probes
+	write_mock_command "$MOCK_BIN/nix" \
+		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "eval" ]]; then printf "%s\n" "nix capability result"; [[ "$*" == *"nixpkgs#codegraph.name"* ]]; exit $?; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/mise" \
+		'if [[ "${1:-}" != "registry" ]]; then exit 1; fi' \
+		'printf "%s\n" "mise capability result"' \
+		'[[ "${2:-}" == "codegraph" || "${2:-}" == "ripgrep" ]]'
+	write_mock_command "$MOCK_BIN/asdf" \
+		'printf "%s\n" "$*" >> "$MOCK_LOG"' \
+		'if [[ "${1:-}" != "plugin" || "${2:-}" != "list" ]]; then exit 1; fi' \
+		'printf "%s\n" ripgrep codegraph'
+	write_mock_command "$MOCK_BIN/curl" 'exit 0'
+
+	source "$HELPER_PATH"
+
+	assert_equal 'codegraph' "$(nix_package_for_tool codegraph)" 'Nix probe returns a newly supported package' || return 1
+	assert_equal 'codegraph' "$(mise_tool_for_tool codegraph)" 'mise probe returns a newly supported tool' || return 1
+	assert_equal 'ripgrep' "$(mise_tool_for_tool rg)" 'mise probe preserves the ripgrep alias' || return 1
+	assert_equal 'codegraph' "$(asdf_plugin_for_tool codegraph)" 'asdf probe finds an installed plugin by tool name' || return 1
+	assert_equal 'ripgrep' "$(asdf_plugin_for_tool rg)" 'asdf probe preserves the ripgrep alias' || return 1
+
+	routes="$(available_routes_for_tool codegraph)"
+	assert_equal $'nix\nmise\nasdf\nofficial\nskip' "$routes" 'manager probes control dynamically supported routes' || return 1
+	assert_not_contains 'capability result' <(printf '%s\n' "$routes") 'probe output does not leak into route data' || return 1
+	assert_not_contains 'plugin list all' "$MOCK_LOG" 'asdf probe does not query remote plugins' || return 1
 }
 
 test_no_empty_agents_file() {
@@ -642,6 +679,7 @@ PATH="$ORIGINAL_PATH"
 export PATH
 
 run_test 'route filtering' test_route_filtering
+run_test 'manager capability probes' test_manager_capability_probes
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
 run_test 'AGENTS.md managed block' test_agents_block_is_add_only_and_idempotent
 run_test 'interactive install and failure continuation' test_interactive_install_and_failure_continuation

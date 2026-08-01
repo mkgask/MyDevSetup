@@ -221,7 +221,9 @@ decisions:
         - id: installer-011-2-installation-backends
           decision: >
             対応環境は Linux/WSL に限定し、導入方法は対象ツールを扱える既存の system、nix、proto、mise、asdf、
-            official の経路から選ぶ。nix、proto、mise、asdf は実行可能なコマンドと対象ツールの対応を検出できた場合だけ候補にし、
+            official の経路から選ぶ。nix と mise は manager側のread-only capability probeで対象識別子を確認できた場合だけ候補にし、
+            asdf は既に登録済みのplugin inventoryで対象pluginを確認できた場合だけ候補にする。probeの失敗・未知識別子・未登録pluginは候補から除外し、
+            probeは導入、plugin登録、remote一覧の同期、設定変更、永続PATH変更を行わない。protoとsystemは安全な共通probeを採用するまで現行の明示的な識別子mappingを使い、
             system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。マネージャー本体や不足プラグインは自動導入しない。
             uv は公式standalone installerを使う official route とし、Serena は uv が利用可能な場合だけ `uv tool install` を使う uv-tool route とする。
             --global では全プロジェクトから利用可能な導入先を持つ経路だけを候補にし、該当経路がなければ skip とする。
@@ -273,8 +275,9 @@ decisions:
 
         - id: installer-011-8-install-method-selection
           decision: >
-            各ツールの選択肢には対応表で利用可能と判定された導入方法だけを表示し、常に skip を含める。
-            未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。
+            各ツールの選択肢にはmanager-specific capability probeまたは現行の明示的なmappingで利用可能と判定された導入方法だけを表示し、常に skip を含める。
+            identifier mappingはmanager側の名前へ変換するためのalias normalizationだけを担い、mapping自体で未確認の対応可否を作らない。
+            未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。asdfはremote plugin一覧だけでは候補にしない。
             system は Python・Ruby・rg の既存標準経路を既定とし、rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
             Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示する。
             選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。

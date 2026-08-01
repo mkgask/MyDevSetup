@@ -292,29 +292,46 @@ system_route_available() {
 	esac
 }
 
-nix_package_for_tool() {
+nix_package_candidates() {
 	case "$1" in
 		python)
-			printf '%s' python3
-			;;
-		ruby)
-			printf '%s' ruby
+			printf '%s\n' python3 python
 			;;
 		rg)
-			printf '%s' ripgrep
+			printf '%s\n' ripgrep rg
 			;;
 		*)
-			return 1
+			printf '%s\n' "$1"
 			;;
 	esac
+}
+
+nix_package_available() {
+	local package_name="$1"
+
+	nix eval --read-only --raw "nixpkgs#${package_name}.name" >/dev/null 2>&1
+}
+
+nix_package_for_tool() {
+	local tool_name="$1"
+	local package_name=""
+
+	while IFS= read -r package_name; do
+		if nix_package_available "$package_name"; then
+			printf '%s' "$package_name"
+			return 0
+		fi
+	done < <(nix_package_candidates "$tool_name")
+
+	return 1
 }
 
 nix_route_available() {
 	local tool_name="$1"
 
 	command -v nix >/dev/null 2>&1 || return 1
-	nix_package_for_tool "$tool_name" >/dev/null || return 1
-	nix profile install --help >/dev/null 2>&1
+	nix profile install --help >/dev/null 2>&1 || return 1
+	nix_package_for_tool "$tool_name" >/dev/null
 }
 
 proto_tool_for_tool() {
@@ -336,56 +353,73 @@ proto_route_available() {
 	proto install --help >/dev/null 2>&1
 }
 
-mise_tool_for_tool() {
+mise_tool_candidates() {
 	case "$1" in
-		python|ruby)
-			printf '%s' "$1"
-			;;
 		rg)
-			printf '%s' ripgrep
-			;;
-		rtk)
-			printf '%s' rtk
-			;;
+		printf '%s\n' ripgrep rg
+		;;
 		*)
-			return 1
-			;;
+		printf '%s\n' "$1"
+		;;
 	esac
+}
+
+mise_tool_for_tool() {
+	local tool_name="$1"
+	local manager_tool=""
+
+	while IFS= read -r manager_tool; do
+		if mise registry "$manager_tool" >/dev/null 2>&1; then
+			printf '%s' "$manager_tool"
+			return 0
+		fi
+	done < <(mise_tool_candidates "$tool_name")
+
+	return 1
 }
 
 mise_route_available() {
 	local tool_name="$1"
-	local manager_tool=""
 
 	command -v mise >/dev/null 2>&1 || return 1
-	manager_tool="$(mise_tool_for_tool "$tool_name")" || return 1
-	mise registry "$manager_tool" >/dev/null 2>&1
+	mise_tool_for_tool "$tool_name" >/dev/null
+}
+
+asdf_plugin_candidates() {
+	case "$1" in
+		rg)
+		printf '%s\n' ripgrep rg
+		;;
+		*)
+		printf '%s\n' "$1"
+		;;
+	esac
 }
 
 asdf_plugin_for_tool() {
-	case "$1" in
-		python|ruby)
-			printf '%s' "$1"
-			;;
-		rg)
-			printf '%s' ripgrep
-			;;
-		rtk)
-			printf '%s' rtk
-			;;
-		*)
-			return 1
-			;;
-	esac
+	local tool_name="$1"
+	local plugin_name=""
+	local installed_plugins=""
+
+	if ! installed_plugins="$(asdf plugin list 2>/dev/null)"; then
+		return 1
+	fi
+
+	while IFS= read -r plugin_name; do
+		if grep -Fxq "$plugin_name" <<< "$installed_plugins"; then
+			printf '%s' "$plugin_name"
+			return 0
+		fi
+	done < <(asdf_plugin_candidates "$tool_name")
+
+	return 1
 }
 
 asdf_route_available() {
 	local tool_name="$1"
-	local plugin_name=""
 
 	command -v asdf >/dev/null 2>&1 || return 1
-	plugin_name="$(asdf_plugin_for_tool "$tool_name")" || return 1
-	asdf plugin list 2>/dev/null | grep -Fxq "$plugin_name"
+	asdf_plugin_for_tool "$tool_name" >/dev/null
 }
 
 official_installer_url_for_tool() {
