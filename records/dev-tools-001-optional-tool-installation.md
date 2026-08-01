@@ -389,3 +389,9 @@ Append rules:
 - Terminology and record hygiene: `capability probe`、`read-only`、`installed-only`、`alias normalization` の表現を `DECISIONS.yml`、record、test期待値で揃えた。`installer-011` のlinkは本記録を指し、binding ruleはrecordだけに残っていない。
 - Status result: `installer-011-2-installation-backends` と `installer-011-8-install-method-selection` を `✅️Implementation Approved` へ更新する。今回の実装で新しいbinding constraintは発生していない。
 - Remaining non-binding risk: 実際のNix/mise/asdf managerを使うlive installは実行していない。proto/systemの動的capability queryは安全な共通契約が確認できるまで対象外であり、将来対応する場合は別議論とする。ShellCheckとRuby YAML parserは環境にないため実行していない。
+
+### Entry 0038 (2026-08-02T00:00:00Z)
+- Implementation refinement: `status` の `present` 詳細を、`--version` 出力から抽出したversion valueと `command -v` で得た実行ファイルの絶対pathを、キー名なしで `version path` の順に表示する形式へ更新した。例: `python present 3.14.4 /usr/bin/python3`。
+- Output behavior: version出力はstdout/stderrを結合し、先頭の非空行から数値version部分を表示する。versionを返さないCLIでも、検出できたpathは表示する。`unavailable` の既存診断、statusの終了status、install/initの処理境界は変更していない。
+- Test result: status mockでPython、Ruby、uvのversionとmock executable pathを検証し、helper 11件がpassした。実環境でも `python present 3.14.4 /usr/bin/python3` の出力を確認した。
+- Validation evidence: helper suite、Bash syntax、editor diagnosticsをpassした。この表示改善は既存 `installer-011-20-status-mode` の検証詳細表示契約内であり、新しいbinding constraintは発生していない。

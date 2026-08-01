@@ -505,13 +505,13 @@ test_status_mode() {
 	prepare_mock_environment status-unavailable
 	install_failed_tool_stubs
 	write_mock_command "$MOCK_BIN/python3" \
-		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "Python 3.13.5"; exit 0; fi' \
 		'exit 1'
 	write_mock_command "$MOCK_BIN/ruby" \
-		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "ruby 3.4.1"; exit 0; fi' \
 		'exit 1'
 	write_mock_command "$MOCK_BIN/uv" \
-		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "uv 0.8.0"; exit 0; fi' \
 		'exit 1'
 	agents_snapshot="$(mktemp)"
 	cp "$MOCK_AGENTS" "$agents_snapshot"
@@ -523,9 +523,9 @@ test_status_mode() {
 	fi
 	assert_equal '1' "$helper_status" 'status reports unavailable tools' || return 1
 	assert_contains 'Development-tool status:' "$MOCK_ROOT/output.log" 'status title' || return 1
-	assert_contains 'python     present' "$MOCK_ROOT/output.log" 'status reports available python' || return 1
-	assert_contains 'ruby       present' "$MOCK_ROOT/output.log" 'status reports available ruby' || return 1
-	assert_contains 'uv         present' "$MOCK_ROOT/output.log" 'status reports available uv' || return 1
+	assert_contains "python     present   3.13.5 $MOCK_BIN/python3" "$MOCK_ROOT/output.log" 'status reports python version and path' || return 1
+	assert_contains "ruby       present   3.4.1 $MOCK_BIN/ruby" "$MOCK_ROOT/output.log" 'status reports ruby version and path' || return 1
+	assert_contains "uv         present   0.8.0 $MOCK_BIN/uv" "$MOCK_ROOT/output.log" 'status reports uv version and path' || return 1
 	assert_contains 'rg         unavailable' "$MOCK_ROOT/output.log" 'status reports unavailable rg' || return 1
 	assert_contains 'rtk        unavailable' "$MOCK_ROOT/output.log" 'status reports version failure' || return 1
 	assert_contains 'codegraph  unavailable' "$MOCK_ROOT/output.log" 'status reports missing codegraph' || return 1

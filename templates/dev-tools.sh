@@ -24,6 +24,8 @@ TOOL_FAILURE_COUNT=0
 STATUS_UNAVAILABLE_COUNT=0
 LAST_OPERATION_COMMAND=""
 FOUND_TOOL_COMMAND=""
+FOUND_TOOL_PATH=""
+FOUND_TOOL_VERSION=""
 LAST_VERIFICATION_DETAILS=""
 DEBUG_ENABLED=0
 
@@ -183,14 +185,37 @@ tool_command_candidates() {
 	esac
 }
 
+extract_version_value() {
+	local version_output="$1"
+	local version_line=""
+	local version_value=""
+
+	while IFS= read -r version_line; do
+		[[ -n "$version_line" ]] || continue
+		if [[ "$version_line" =~ ([0-9]+([.][0-9]+)+[[:alnum:]_.+-]*) ]]; then
+			version_value="${BASH_REMATCH[1]}"
+		else
+			version_value="$version_line"
+		fi
+		printf '%s' "$version_value"
+		return 0
+	done <<< "$version_output"
+
+	return 0
+}
+
 find_tool_command() {
 	local tool_name="$1"
 	local command_name=""
+	local command_path=""
 	local verification_status=0
 	local verification_command=""
 	local verification_reason=""
+	local version_output=""
 
 	FOUND_TOOL_COMMAND=""
+	FOUND_TOOL_PATH=""
+	FOUND_TOOL_VERSION=""
 	LAST_VERIFICATION_DETAILS=""
 
 	while IFS= read -r command_name; do
@@ -205,9 +230,12 @@ find_tool_command() {
 			continue
 		fi
 
+		command_path="$(command -v "$command_name")"
 		record_operation_command "$command_name" --version
-		if "$command_name" --version >/dev/null 2>&1; then
+		if version_output="$("$command_name" --version 2>&1)"; then
 			FOUND_TOOL_COMMAND="$command_name"
+			FOUND_TOOL_PATH="$command_path"
+			FOUND_TOOL_VERSION="$(extract_version_value "$version_output")"
 			return 0
 		else
 			verification_status="$?"
@@ -221,6 +249,21 @@ find_tool_command() {
 	done < <(tool_command_candidates "$tool_name")
 
 	return 1
+}
+
+format_present_tool_detail() {
+	local version="$1"
+	local path="$2"
+	local separator=""
+
+	if [[ -n "$version" ]]; then
+		printf '%s' "$version"
+		separator=" "
+	fi
+
+	if [[ -n "$path" ]]; then
+		printf '%s%s' "$separator" "$path"
+	fi
 }
 
 # ---
@@ -957,10 +1000,12 @@ process_init_tool() {
 
 process_status_tool() {
 	local tool_name="$1"
+	local status_detail=""
 	local verification_detail=""
 
 	if find_tool_command "$tool_name"; then
-		set_tool_result "$tool_name" present "$FOUND_TOOL_COMMAND"
+		status_detail="$(format_present_tool_detail "$FOUND_TOOL_VERSION" "$FOUND_TOOL_PATH")"
+		set_tool_result "$tool_name" present "$status_detail"
 		return 0
 	fi
 
