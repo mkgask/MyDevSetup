@@ -395,3 +395,40 @@ Append rules:
 - Output behavior: version出力はstdout/stderrを結合し、先頭の非空行から数値version部分を表示する。versionを返さないCLIでも、検出できたpathは表示する。`unavailable` の既存診断、statusの終了status、install/initの処理境界は変更していない。
 - Test result: status mockでPython、Ruby、uvのversionとmock executable pathを検証し、helper 11件がpassした。実環境でも `python present 3.14.4 /usr/bin/python3` の出力を確認した。
 - Validation evidence: helper suite、Bash syntax、editor diagnosticsをpassした。この表示改善は既存 `installer-011-20-status-mode` の検証詳細表示契約内であり、新しいbinding constraintは発生していない。
+
+### Entry 0039 (2026-08-02T00:00:00Z)
+- Why now: 実際の導入を開始する前に、各不足ツールがどのmanager/routeと予定コマンドで導入されるかを確認できる `install --dry-run` が必要になった。既存の `install` は `has_install_route`、`prompt_for_route`、`install_with_route` の順で選択と実行を分けているため、選択結果を表示して実行を止める境界を明示する必要がある。
+- Broad-scan findings:
+  - route候補は `available_routes_for_tool` がsystem、nix、proto、mise、asdf、official、uv-toolの順でcapability probeを行い、`--global` の候補制限と `skip` を適用する。dry-runでもこの既存判定を再利用し、未導入manager、不足plugin、未対応toolを候補へ戻さない。
+  - 実際の導入コマンドは `install_with_system`、`install_with_nix`、`install_with_proto`、`install_with_mise`、`install_with_asdf`、`install_with_official`、`install_with_uv_tool` に分散している。systemのsudo/package manager差、officialのcurl pipeline、manager導入後のPATH refreshや検証用queryがあるため、route名だけでなく予定する主要コマンドを表示できる形が必要である。
+  - install時の既存ツールは質問せずpresentとして処理し、未導入ツールだけを一回のroute選択で扱う。dry-runはこの対象境界を維持し、既存ツールを再導入候補にしない。
+  - 現行の非対話installは不足ツールをskipする。dry-runは導入を実行しないpreviewであるため、TTYがなくても候補routeと既定routeを表示できる方が「どのmanagerで導入されるかを確認する」という目的に適する。ただし対話環境では既存のroute選択を使い、選択したrouteを予定として表示する候補がある。
+  - `prepare_known_tool_paths` による現在プロセス内のPATH準備とmanager capability probeは読み取り・検出に必要だが、install関数に含まれる導入、plugin操作、official pipeline、PATH refresh、AGENTS.md追記はdry-runで実行してはならない。
+- Focus areas:
+  - `--dry-run` の引数契約をinstall専用の一回限りflagとして定義し、`init`/`status`との併用、`--global`との併用、flag位置、help表示、既存 `--debug` との組み合わせを確定する。
+  - route選択と予定コマンドの生成を実行関数から分離し、各routeのmanager名、tool/package/plugin identifier、主要install commandを安全に表示する。予定表示はshell commandとして実行せず、officialのURLやsudo有無も明示する。
+  - interactive dry-runでは既存の選択肢から選んだrouteをpreviewし、non-interactive dry-runでは利用可能なconfigured default routeをpreviewする。default routeが利用できない場合は候補routeとskipを表示し、暗黙に別routeを実行しない方向を検証する。
+  - dry-runの結果集計、終了status、AGENTS.md、PATH、manager/plugin設定、ネットワークアクセスの境界を既存install/status契約と整合させる。
+- Explicit exclusions: dry-runの実行中にsystem package manager、nix、proto、mise、asdf、official installer、uv tool installを実行しない。manager本体・plugin導入、shell起動ファイル・manager設定・AGENTS.md・project設定の変更、install.shの責務変更、JSON等の新しい出力形式、dry-runで選んだrouteの永続化は今回の対象外とする。
+- Candidate direction: `install --dry-run` をinstall専用の読み取りpreviewとして追加し、既存ツールはpresent、不足ツールはroute選択またはnon-interactive時のconfigured default routeを `dry-run`/`planned` の結果と予定コマンド付きで表示する。capability probeとalias normalization、route order、`--global`候補制限、`skip`常設は既存どおり維持する。dry-runはpreview上の引数エラーや内部生成失敗を除き、導入結果の成功/失敗を実行したかのようには扱わず、選択・表示が完了すれば終了status 0とする候補である。
+- Current conclusion: routeの選択とinstallの副作用を分離する専用preview層が必要であり、install関数をdry-run条件分岐で部分実行するより、予定コマンド生成を共通化してdry-runから呼ぶ方が安全である。`--global`は既存のinstall scopeに従い併用可能とし、init/statusとの併用は引数エラーにする方向が既存mode契約と整合する。
+- Next validation target: discussion-validationでは、予定コマンド生成が全routeの実際のinstall commandと一致するか、interactive/non-interactiveのroute選択が既存の一回選択・非対話ポリシーと両立するか、dry-runがmanager probe以外の副作用とネットワークアクセスを避けるか、終了status 0と結果語が既存のfailure/summary契約から逸脱しないかを確認する。特に「non-interactiveでdefaultをpreviewする」ことをactive install policyの例外として明示する必要がある。
+- Promotion to DECISIONS.yml: pending（`installer-011-15-mode-selection`、`installer-011-5-failure-and-noninteractive-policy`、`installer-011-8-install-method-selection`、`installer-011-11-process-scoped-manager-activation`、`installer-011-17-failure-diagnostics`に関係する候補をdiscussion-validation後に更新または新規sub-decision化する）。
+
+### Entry 0040 (2026-08-02T00:00:01Z)
+- Discussion-validation: broad scanはhelperの引数parser/help、route availabilityとmanager-specific probe、各routeのinstall command、install時のPATH/AGENTS.md更新、mock tests、関連decisionを確認しており、dry-runの選択・予定表示・副作用境界を判断するために必要な範囲を覆っている。
+- Directional fit: `install --dry-run` をhelper内のpreviewとして追加し、実際の導入前にmanager/routeと主要コマンドを確認する方向は、ユーザーの目的と `installer-011-7` の責務境界に適合する。install.shの配布・DODKit委譲や、実際のinstall/init処理を広げる必要はない。
+- Contract fit: capability probe、alias normalization、route order、`--global`候補制限、`skip`常設を維持し、manager本体・plugin・package・official installer・uv toolの導入、shell/manager/AGENTS.md/project設定の変更、install後PATH refreshをdry-runから除外する。manager-specific probe自体が行う既存のread-only問い合わせは許可するが、導入を開始するnetwork pipelineは実行しない。
+- Hidden bindings resolved: 通常installのTTYなしskipは副作用を持つ導入処理の安全策として維持し、`--dry-run`だけは導入を実行しないpreviewであるためnon-interactive時にconfigured default routeを表示する明示例外とする。interactive時は既存の一回だけのroute選択を再利用し、選択したrouteを予定として表示する。既存ツールはpresentとして扱い、missing toolのpreviewだけを作る。
+- Result and exit contract: 予定された導入を `planned` としてsummaryへ表示し、previewが最後まで表示できた場合は導入成功・失敗とは扱わず終了status 0とする。利用可能routeがない、またはskipが選ばれた場合はskipとして表示する。引数エラー、予定コマンド生成の不整合などpreview自体の失敗は既存の非0エラー契約に従う。
+- Promotion targets: `installer-011-15-mode-selection` に `--dry-run` のinstall限定・flag位置・`--global`併用・init/status拒否を追加する。`installer-011-5-failure-and-noninteractive-policy` にdry-runのnon-interactive default preview例外を追加する。新規 `installer-011-21-dry-run-preview` に、capability probeのみの選択、route-specific planned command、`planned`/`skip`結果、status 0、副作用禁止、既存install処理の非変更をまとめる。
+- Validation result: PASS — candidate directionは元の目的、既存のread-only、manager/plugin自動導入禁止、process-scoped activation、AGENTS.md記録、failure diagnostics、mode境界と整合する。実装時は予定コマンドと実行コマンドの一致をrouteごとのmockで検証し、manager/package/installerのログが発生しないこと、interactive/non-interactiveの選択、flag組み合わせ、既存install/init/status回帰を確認する。
+- Promotion to DECISIONS.yml: ready（`installer-011-15-mode-selection`、`installer-011-5-failure-and-noninteractive-policy`を更新し、`installer-011-21-dry-run-preview`を追加する）。
+
+### Entry 0041 (2026-08-02T00:00:02Z)
+- Implementation result: `templates/dev-tools.sh` に `--dry-run` を追加し、install専用flagとしてparser/helpへ反映した。`init --dry-run` と `status --dry-run` は引数エラーとし、`--global` と `--debug` は既存のinstall flag契約どおり併用できる。top-level `install.sh` の引数透過と配布責務は変更していない。
+- Preview result: 既存ツールは `present` として再導入せず、不足ツールはinteractive時に既存の一回のroute選択、non-interactive時にconfigured default routeを使って `planned` として表示する。system、nix、proto、mise、asdf、official、uv-toolそれぞれのmanager/package/plugin/identifierと主要install commandを表示し、利用可能routeなし・skip選択は `skip` とする。
+- Side-effect boundary: dry-runはmanager capability probeと現在の実行可能性検証だけを行い、package manager、nix profile install、proto/mise/asdf install、official curl pipeline、uv tool install、manager/plugin操作、install後PATH refresh、AGENTS.md・project・shell・manager設定変更を実行しない。dry-runのsummary表示後は、preview自体が完了すればstatus 0を返す。
+- Test result: dry-runのparser、help、init/status拒否、non-interactive default preview、interactive route selection、副作用なし、global preview、全routeのplanned commandをfocused fixtureで確認した。`bash tests/dev-tools.test.sh` は13件、`bash tests/install.test.sh` は15件がpassした。
+- Validation evidence: helper／installer suite、Bash syntax、editor diagnostics、`git diff --check`、実環境の `./templates/dev-tools.sh install --dry-run </dev/null | cat` と `install --dry-run --global` を確認した。実環境では既存pythonを `present`、ruby/rgを `system` planned、routeのない対象を `skip` と表示し、global previewもstatus 0だった。ShellCheckは環境に存在しないため未実行である。
+- Decision result: `installer-011-5-failure-and-noninteractive-policy`、`installer-011-15-mode-selection`、`installer-011-21-dry-run-preview` を `✅️Implementation Approved` とした。実装により新たなbinding constraintは発生していない。

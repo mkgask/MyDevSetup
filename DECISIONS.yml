@@ -252,6 +252,7 @@ decisions:
         - id: installer-011-5-failure-and-noninteractive-policy
           decision: >
             install の空入力はそのツールに設定された既定導入方法を選択し、TTYがない実行では任意ツールをスキップする。
+            ただし install --dry-run は導入を実行しないpreviewであるため、TTYがない場合も利用可能なconfigured default routeを表示する。
             init は明示指定自体を同意とみなし、ツールごとの追加確認を行わず、利用可能で初期設定が必要なツールだけを処理する。
             install と init の個別失敗では後続ツールを継続し、処理末尾に成功・失敗・スキップをまとめて表示する。
           status: "✅️Implementation Approved"
@@ -330,9 +331,9 @@ decisions:
 
         - id: installer-011-15-mode-selection
           decision: >
-            補助スクリプトは dev-tools.sh [install|init|status] [--global] [--debug] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行い、status は現在のCLI状態だけを検証する。
+            補助スクリプトは dev-tools.sh [install|init|status] [--global] [--debug] [--dry-run] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行い、status は現在のCLI状態だけを検証する。
             --global と --debug は引数の位置を問わず受け付け、同じflagの複数指定は冪等に扱う。--debug はこの補助スクリプトの一回限りの診断指定であり、環境変数による代替指定は提供しない。
-            --global は install との組み合わせだけを許可し、init または status との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備だけを行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug を渡す契約はこの決定に含めない。
+            --global と --dry-run は install との組み合わせだけを許可し、init または status との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備だけを行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug/--dry-run を渡す契約はこの決定に含めない。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -375,4 +376,13 @@ decisions:
             `summary` はstatusの公開aliasにせず、`status --global` は引数エラーとする。`--debug` はstatusのversion検証traceに限り利用でき、Linux/WSL判定と現在プロセス内のPATH準備は既存契約を維持する。
           status: "✅️Implementation Approved"
           link: "records/dev-tools-001-optional-tool-installation.md"
+          sub_decisions: []
+
+        - id: installer-011-21-dry-run-preview
+          decision: >
+            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序、`--global`候補制限、interactive時の一回のroute選択だけを行い、実際の導入を開始しない読み取りpreviewとする。
+            既存ツールは `present` として再導入せず、不足ツールは選択またはTTYなし時のconfigured default routeを `planned` として表示する。利用可能な導入経路がない、または `skip` が選ばれた対象は `skip` と表示する。
+            各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。system package manager、nix、proto、mise、asdf、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。
+            preview対象を最後まで処理し、preview結果を表示できれば終了statusは0とする。引数エラーまたはplanned command生成自体の失敗は非0とする。`--global` は既存のglobal install scopeをroute候補とplanned commandへ適用し、`--debug` は実行されないinstall commandのtraceを追加せず、表示されたplanned detailを診断情報とする。
+          status: "✅️Implementation Approved"
           sub_decisions: []

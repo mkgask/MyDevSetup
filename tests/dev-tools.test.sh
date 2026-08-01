@@ -423,10 +423,11 @@ test_debug_flag_and_verification_failure() {
 
 run_helper_mode() {
 	local mode="$1"
+	shift
 	local output_file="$MOCK_ROOT/output.log"
 	local command_status=0
 
-	if env DEV_TOOLS_AGENTS_PATH="$MOCK_AGENTS" HOME="$MOCK_HOME" MOCK_ROOT="$MOCK_ROOT" MOCK_BIN="$MOCK_BIN" MOCK_LOG="$MOCK_LOG" MOCK_FAIL_TOOL="$MOCK_FAIL_TOOL" PATH="$PATH" bash "$HELPER_PATH" "$mode" > "$output_file" 2>&1; then
+	if env DEV_TOOLS_AGENTS_PATH="$MOCK_AGENTS" HOME="$MOCK_HOME" MOCK_ROOT="$MOCK_ROOT" MOCK_BIN="$MOCK_BIN" MOCK_LOG="$MOCK_LOG" MOCK_FAIL_TOOL="$MOCK_FAIL_TOOL" PATH="$PATH" bash "$HELPER_PATH" "$mode" "$@" </dev/null > "$output_file" 2>&1; then
 		command_status=0
 	else
 		command_status="$?"
@@ -472,6 +473,28 @@ test_mode_parsing_and_logging() {
 	assert_equal 'status' "$DEV_TOOLS_MODE" 'status mode with debug flag' || return 1
 	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state for status mode' || return 1
 
+	if ! parse_args install --dry-run --global --debug; then
+		fail_test 'dry-run flag was rejected for install mode'
+		return 1
+	fi
+	assert_equal 'install' "$DEV_TOOLS_MODE" 'dry-run install mode' || return 1
+	assert_equal '1' "$DRY_RUN" 'dry-run flag state' || return 1
+	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state with dry-run' || return 1
+
+	if parse_args init --dry-run; then
+		fail_test 'init --dry-run was accepted'
+	else
+		parse_status="$?"
+	fi
+	assert_equal '2' "$parse_status" 'init --dry-run parse status' || return 1
+
+	if parse_args status --dry-run; then
+		fail_test 'status --dry-run was accepted'
+	else
+		parse_status="$?"
+	fi
+	assert_equal '2' "$parse_status" 'status --dry-run parse status' || return 1
+
 	if parse_args init --global; then
 		fail_test 'init --global was accepted'
 	else
@@ -493,8 +516,84 @@ test_mode_parsing_and_logging() {
 	assert_equal '[❌️ERROR] error' "$error_output" 'error log contract' || return 1
 	assert_equal '[✅️SUCCESS] success' "$success_output" 'success log contract' || return 1
 	print_usage > "$usage_output_file"
-	assert_contains 'dev-tools.sh [install|init|status] [--global] [--debug]' "$usage_output_file" 'document status and debug flags' || return 1
+	assert_contains 'dev-tools.sh [install|init|status] [--global] [--debug] [--dry-run]' "$usage_output_file" 'document status, debug, and dry-run flags' || return 1
 	assert_not_contains 'DEV_TOOLS_DEBUG' "$usage_output_file" 'remove debug environment variable documentation' || return 1
+}
+
+test_dry_run_mode() {
+	local output=""
+	local helper_status=0
+	local agents_snapshot=""
+
+	prepare_mock_environment dry-run
+	install_failed_tool_stubs
+	prepare_install_mocks
+	agents_snapshot="$(mktemp)"
+	cp "$MOCK_AGENTS" "$agents_snapshot"
+
+	if output="$(run_helper_mode install --dry-run)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'non-interactive dry-run succeeds' || return 1
+	assert_contains 'Development-tool dry-run:' "$MOCK_ROOT/output.log" 'print dry-run title' || return 1
+	grep -Eq '^  python[[:space:]]+planned[[:space:]]+system: .*apt-get install -y python3' "$MOCK_ROOT/output.log" || fail_test 'preview the default system route for python' || return 1
+	grep -Eq '^  rtk[[:space:]]+planned[[:space:]]+official: .*rtk' "$MOCK_ROOT/output.log" || fail_test 'preview the default official route for RTK' || return 1
+	grep -Eq '^  uv[[:space:]]+planned[[:space:]]+official: .*uv/install.sh' "$MOCK_ROOT/output.log" || fail_test 'preview the default official route for uv' || return 1
+	grep -Eq '^  serena[[:space:]]+skipped[[:space:]]+' "$MOCK_ROOT/output.log" || fail_test 'skip Serena without an available uv route' || return 1
+	assert_not_contains 'Choose an installation method' "$MOCK_ROOT/output.log" 'non-interactive dry-run does not prompt' || return 1
+	assert_not_contains 'install' "$MOCK_LOG" 'dry-run does not execute installation commands' || return 1
+	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'dry-run changed AGENTS.md' || return 1
+
+	prepare_mock_environment dry-run-interactive
+	install_failed_tool_stubs
+	prepare_install_mocks
+	write_mock_command "$MOCK_BIN/nix" \
+		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "eval" ]]; then exit 0; fi' \
+		'exit 1'
+
+	if output="$(run_helper_with_inputs $'nix\nsystem\nsystem\nofficial\nofficial\nofficial\n' install --dry-run)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'interactive dry-run succeeds' || return 1
+	assert_contains 'python     planned   nix: nix profile install nixpkgs#python3' "$MOCK_ROOT/output.log.stdout" 'preview the interactively selected nix route' || return 1
+	assert_not_contains 'install python latest' "$MOCK_LOG" 'interactive dry-run does not execute manager commands' || return 1
+}
+
+test_dry_run_planned_commands() {
+	local expected_system_command=""
+	local official_command=""
+
+	prepare_mock_environment dry-run-planned-commands
+	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
+	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
+	write_mock_command "$MOCK_BIN/nix" 'exit 0'
+	write_mock_command "$MOCK_BIN/proto" 'exit 0'
+	write_mock_command "$MOCK_BIN/mise" \
+		'if [[ "${1:-}" == "registry" ]]; then exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/asdf" \
+		'if [[ "${1:-}" == "plugin" && "${2:-}" == "list" ]]; then printf "%s\n" ripgrep; exit 0; fi' \
+		'exit 1'
+	source "$HELPER_PATH"
+
+	if [[ "$EUID" -eq 0 ]]; then
+		expected_system_command='apt-get install -y python3'
+	else
+		expected_system_command='sudo apt-get install -y python3'
+	fi
+	assert_equal "$expected_system_command" "$(planned_install_command_for_route python system)" 'preview system command' || return 1
+	assert_equal 'nix profile install nixpkgs#python3' "$(planned_install_command_for_route python nix)" 'preview nix command' || return 1
+	assert_equal 'proto install python latest --yes' "$(planned_install_command_for_route python proto)" 'preview proto command' || return 1
+	assert_equal 'mise install python@latest' "$(planned_install_command_for_route python mise)" 'preview mise command' || return 1
+	assert_equal 'asdf install ripgrep latest' "$(planned_install_command_for_route rg asdf)" 'preview asdf alias command' || return 1
+	official_command="$(planned_install_command_for_route rtk official)"
+	assert_contains 'rtk-ai/rtk' <(printf '%s\n' "$official_command") 'preview official installer URL' || return 1
+	assert_equal 'uv tool install -p 3.13 serena-agent' "$(planned_install_command_for_route serena uv-tool)" 'preview uv-tool command' || return 1
 }
 
 test_status_mode() {
@@ -687,6 +786,8 @@ run_test 'uv dependency failure' test_uv_dependency_failure
 run_test 'debug flag and verification failure' test_debug_flag_and_verification_failure
 run_test 'default routes and skip selection' test_default_route_and_skip_selection
 run_test 'mode parsing and logging' test_mode_parsing_and_logging
+run_test 'dry-run mode' test_dry_run_mode
+run_test 'dry-run planned commands' test_dry_run_planned_commands
 run_test 'status mode' test_status_mode
 run_test 'project initialization mode' test_project_init_mode
 

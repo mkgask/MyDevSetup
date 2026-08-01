@@ -46,13 +46,14 @@ UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 print_usage() {
 	cat <<'USAGE'
 Usage:
-	dev-tools.sh [install|init|status] [--global] [--debug]
+	dev-tools.sh [install|init|status] [--global] [--debug] [--dry-run]
 	dev-tools.sh --help
 
 Description:
 	Install missing development CLI tools, initialize installed tools for the current project, or display their current status.
 	The --global option is available only for install mode.
 	The --debug option prints external command traces for this run.
+	The --dry-run option previews install routes and commands without installing anything.
 
 Environment:
 	DEV_TOOLS_AGENTS_PATH  Override the AGENTS.md path for this run.
@@ -617,6 +618,21 @@ has_install_route() {
 	return 1
 }
 
+default_available_route_for_tool() {
+	local tool_name="$1"
+	local configured_default_route="$(default_route_for_tool "$tool_name")"
+	local route_name=""
+
+	while IFS= read -r route_name; do
+		if [[ "$route_name" == "$configured_default_route" ]]; then
+			printf '%s' "$configured_default_route"
+			return 0
+		fi
+	done < <(available_routes_for_tool "$tool_name")
+
+	printf '%s' skip
+}
+
 prompt_is_available() {
 	[[ -t 0 || -t 1 ]]
 }
@@ -827,6 +843,77 @@ install_with_uv_tool() {
 	refresh_uv_tool_path
 }
 
+planned_install_command_for_route() {
+	local tool_name="$1"
+	local route_name="$2"
+	local manager_name=""
+	local package_name=""
+	local manager_tool=""
+	local plugin_name=""
+	local installer_url=""
+	local pipeline_command=""
+	local -a planned_command=()
+
+	case "$route_name" in
+		system)
+		manager_name="$(find_system_package_manager)" || return 1
+		package_name="$(system_package_for_tool "$tool_name" "$manager_name")" || return 1
+		case "$manager_name" in
+			apt-get|dnf|yum)
+				planned_command=("$manager_name" install -y "$package_name")
+				;;
+			pacman)
+				planned_command=("$manager_name" -S --noconfirm "$package_name")
+				;;
+			zypper)
+				planned_command=("$manager_name" --non-interactive install --no-recommends "$package_name")
+				;;
+			apk)
+				planned_command=("$manager_name" add --no-cache "$package_name")
+				;;
+			brew)
+				planned_command=("$manager_name" install "$package_name")
+				;;
+			*)
+				return 1
+				;;
+		esac
+		if [[ "$EUID" -ne 0 ]]; then
+			planned_command=(sudo "${planned_command[@]}")
+		fi
+		format_command "${planned_command[@]}"
+		;;
+		nix)
+		package_name="$(nix_package_for_tool "$tool_name")" || return 1
+		format_command nix profile install "nixpkgs#$package_name"
+		;;
+		proto)
+		manager_tool="$(proto_tool_for_tool "$tool_name")" || return 1
+		format_command proto install "$manager_tool" latest --yes
+		;;
+		mise)
+		manager_tool="$(mise_tool_for_tool "$tool_name")" || return 1
+		format_command mise install "$manager_tool@latest"
+		;;
+		asdf)
+		plugin_name="$(asdf_plugin_for_tool "$tool_name")" || return 1
+		format_command asdf install "$plugin_name" latest
+		;;
+		official)
+		installer_url="$(official_installer_url_for_tool "$tool_name")" || return 1
+		pipeline_command="$(format_command curl --proto '=https' --tlsv1.2 -fsSL "$installer_url") | sh"
+		printf '%s' "$pipeline_command"
+		;;
+		uv-tool)
+		package_name="$(uv_tool_package_for_tool "$tool_name")" || return 1
+		format_command uv tool install -p 3.13 "$package_name"
+		;;
+		*)
+		return 1
+		;;
+	esac
+}
+
 install_with_route() {
 	local tool_name="$1"
 	local route_name="$2"
@@ -899,6 +986,44 @@ set_tool_result() {
 	fi
 }
 
+process_dry_run_tool() {
+	local tool_name="$1"
+	local selected_route=""
+	local planned_command=""
+
+	if find_tool_command "$tool_name"; then
+		set_tool_result "$tool_name" present "$FOUND_TOOL_COMMAND"
+		log_info "$tool_name is already available as $FOUND_TOOL_COMMAND"
+		return 0
+	fi
+
+	if ! has_install_route "$tool_name"; then
+		set_tool_result "$tool_name" skipped "no available installation method"
+		log_warning "No installation method is available for $tool_name; skipping"
+		return 0
+	fi
+
+	if prompt_is_available; then
+		selected_route="$(prompt_for_route "$tool_name")"
+	else
+		selected_route="$(default_available_route_for_tool "$tool_name")"
+	fi
+
+	if [[ "$selected_route" == "skip" || -z "$selected_route" ]]; then
+		set_tool_result "$tool_name" skipped "dry-run selected skip"
+		return 0
+	fi
+
+	if planned_command="$(planned_install_command_for_route "$tool_name" "$selected_route")"; then
+		set_tool_result "$tool_name" planned "$selected_route: $planned_command"
+		log_info "Would install $tool_name via $selected_route: $planned_command"
+		return 0
+	fi
+
+	set_tool_result "$tool_name" failed "$selected_route (preview command generation failed)"
+	log_error "Could not preview $tool_name via $selected_route"
+}
+
 process_install_tool() {
 	local tool_name="$1"
 	local installed_command=""
@@ -906,6 +1031,11 @@ process_install_tool() {
 	local operation_status=0
 	local operation_command=""
 	local verification_detail=""
+
+	if [[ "$DRY_RUN" -eq 1 ]]; then
+		process_dry_run_tool "$tool_name"
+		return 0
+	fi
 
 	if find_tool_command "$tool_name"; then
 		installed_command="$FOUND_TOOL_COMMAND"
@@ -1165,7 +1295,11 @@ print_summary_rows() {
 }
 
 print_summary() {
-	printf '\n%s\n' 'Development-tool summary:'
+	if [[ "$DRY_RUN" -eq 1 ]]; then
+		printf '\n%s\n' 'Development-tool dry-run:'
+	else
+		printf '\n%s\n' 'Development-tool summary:'
+	fi
 	print_summary_rows
 }
 
@@ -1182,6 +1316,7 @@ parse_args() {
 
 	DEV_TOOLS_MODE="install"
 	GLOBAL_INSTALL=0
+	DRY_RUN=0
 	DEBUG_ENABLED=0
 
 	while (($# > 0)); do
@@ -1200,6 +1335,9 @@ parse_args() {
 			--debug)
 				DEBUG_ENABLED=1
 				;;
+			--dry-run)
+				DRY_RUN=1
+				;;
 			-h|--help)
 				print_usage
 				return 1
@@ -1214,6 +1352,11 @@ parse_args() {
 
 	if [[ ("$DEV_TOOLS_MODE" == "init" || "$DEV_TOOLS_MODE" == "status") && "$GLOBAL_INSTALL" -eq 1 ]]; then
 		log_error "The --global option is only valid with install mode"
+		return 2
+	fi
+
+	if [[ "$DEV_TOOLS_MODE" != "install" && "$DRY_RUN" -eq 1 ]]; then
+		log_error "The --dry-run option is only valid with install mode"
 		return 2
 	fi
 
@@ -1247,7 +1390,7 @@ main() {
 		process_tool "$tool_name"
 	done
 
-	if [[ "$DEV_TOOLS_MODE" == "install" ]]; then
+	if [[ "$DEV_TOOLS_MODE" == "install" && "$DRY_RUN" -eq 0 ]]; then
 		if ! update_agents_managed_block; then
 			agents_status=1
 		fi
