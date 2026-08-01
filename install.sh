@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-FORCE_OVERWRITE=0
+OVERWRITE_POLICY="ask"
 SHOW_HELP=0
 
 PASSTHROUGH_ARGS=()
@@ -34,10 +34,10 @@ Description:
 Examples:
 	install.sh
 	install.sh copilot
-	install.sh cursor --force
+	install.sh cursor --overwrite yes
 
 Options:
-	--force                Also used locally to overwrite AGENTS.md and .docs/PRINCIPLES.md when they already exist.
+	--overwrite yes|no     Set whether changed AGENTS.md and .docs/PRINCIPLES.md are overwritten without prompting.
 	-h, --help             Show this help and DODKit help.
 USAGE
 }
@@ -92,7 +92,7 @@ require_command() {
 }
 
 has_tty() {
-	[[ -t 0 || -t 1 ]]
+	[[ -r /dev/tty ]] && [[ -w /dev/tty ]] && [[ -t 1 ]]
 }
 
 path_has_symlink_component() {
@@ -115,61 +115,87 @@ confirm_overwrite() {
 	local answer=""
 
 	if has_tty; then
-		if [[ -z "${NO_COLOR:-}" ]]; then
-			printf '\033[33m[⚠️WARNING] File exists: %s\033[0m\n' "$destination_path" >/dev/tty
-		else
-			printf '[⚠️WARNING] File exists: %s\n' "$destination_path" >/dev/tty
-		fi
-		printf 'Overwrite this file? [y/N]: ' >/dev/tty
+		log_warning "File exists: $destination_path" >/dev/tty
+		printf 'Overwrite this file? [Y/n/a] (a = all remaining files): ' >/dev/tty
 		read -r answer </dev/tty || true
-
-		case "$answer" in
-			y|Y|yes|YES)
-				return 0
-				;;
-			*)
-				return 1
-				;;
-		esac
-	fi
-
-	if [[ ! -t 0 ]]; then
-		log_warning "Non-interactive execution detected; preserving existing file: $destination_path"
-		return 1
-	fi
-
-	if supports_stdout_color; then
-		printf '\033[33m[⚠️WARNING] File exists: %s\033[0m\n' "$destination_path"
+	elif [[ -t 0 ]]; then
+		log_warning "File exists: $destination_path"
+		printf 'Overwrite this file? [Y/n/a] (a = all remaining files): '
+		read -r answer || true
 	else
-		printf '[⚠️WARNING] File exists: %s\n' "$destination_path"
+		return 0
 	fi
-	printf 'Overwrite this file? [y/N]: '
-	read -r answer
 
 	case "$answer" in
-		y|Y|yes|YES)
+		a|A)
+			OVERWRITE_POLICY="yes"
 			return 0
 			;;
-		*)
+		n|N|no|NO)
 			return 1
+			;;
+		*)
+			return 0
+			;;
+	esac
+}
+
+should_overwrite() {
+	local destination_path="$1"
+
+	case "$OVERWRITE_POLICY" in
+		yes)
+			return 0
+			;;
+		no)
+			return 1
+			;;
+		ask)
+			confirm_overwrite "$destination_path"
+			;;
+		*)
+			die "Unsupported overwrite policy '$OVERWRITE_POLICY'. Expected ask, yes, or no."
 			;;
 	esac
 }
 
 parse_args() {
 	local argument=""
+	local overwrite_value=""
+	local argument_index=0
 
+	OVERWRITE_POLICY="ask"
+	SHOW_HELP=0
 	PASSTHROUGH_ARGS=("$@")
 
-	for argument in "$@"; do
+	while [[ "$argument_index" -lt "$#" ]]; do
+		argument="${PASSTHROUGH_ARGS[$argument_index]}"
 
-		if [[ "$argument" == "--force" ]]; then
-			FORCE_OVERWRITE=1
-		fi
+		case "$argument" in
+			--overwrite)
+				if [[ "$((argument_index + 1))" -ge "$#" ]]; then
+					die "--overwrite requires a value: yes or no."
+				fi
 
-		if [[ "$argument" == "-h" ]] || [[ "$argument" == "--help" ]]; then
-			SHOW_HELP=1
-		fi
+				overwrite_value="${PASSTHROUGH_ARGS[$((argument_index + 1))]}"
+				case "$overwrite_value" in
+					yes|no)
+						OVERWRITE_POLICY="$overwrite_value"
+						;;
+					*)
+						die "Invalid --overwrite value '$overwrite_value'. Expected yes or no."
+						;;
+					esac
+
+				argument_index=$((argument_index + 2))
+				continue
+				;;
+			-h|--help)
+				SHOW_HELP=1
+				;;
+		esac
+
+		argument_index=$((argument_index + 1))
 	done
 }
 
@@ -269,7 +295,7 @@ install_template_asset() {
 			return 0
 		fi
 
-		if [[ "$allows_unconditional_overwrite" -ne 1 ]] && [[ "$FORCE_OVERWRITE" -ne 1 ]] && ! confirm_overwrite "$destination_path"; then
+		if [[ "$allows_unconditional_overwrite" -ne 1 ]] && ! should_overwrite "$destination_path"; then
 			rm -f "$temporary_file"
 			log_warning "Skipped existing file: $destination_path"
 			return 0

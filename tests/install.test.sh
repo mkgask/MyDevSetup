@@ -7,6 +7,9 @@ PROJECT_DIRECTORY="$(cd -- "$TESTS_DIRECTORY/.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
 PASS_COUNT=0
 
+# shellcheck source=/dev/null
+source "$PROJECT_DIRECTORY/install.sh"
+
 cleanup() {
 	rm -rf "$TEST_ROOT"
 }
@@ -38,6 +41,83 @@ assert_not_contains() {
 		printf '[FAIL] %s\nunexpected: %s\n' "$description" "$unexpected" >&2
 		return 1
 	fi
+}
+
+test_parse_args_accepts_overwrite_policy_and_preserves_passthrough() {
+	parse_args copilot --overwrite yes --custom-flag value
+
+	[[ "$OVERWRITE_POLICY" == "yes" ]] || fail_test 'parse_args did not set overwrite=yes' || return 1
+	[[ "${PASSTHROUGH_ARGS[*]}" == "copilot --overwrite yes --custom-flag value" ]] || fail_test 'parse_args changed passthrough arguments' || return 1
+}
+
+test_parse_args_defaults_to_ask() {
+	parse_args copilot
+
+	[[ "$OVERWRITE_POLICY" == "ask" ]] || fail_test 'parse_args did not default overwrite policy to ask' || return 1
+}
+
+test_parse_args_rejects_invalid_overwrite_values() {
+	if (parse_args --overwrite maybe 2>/dev/null); then
+		fail_test 'parse_args accepted an invalid overwrite value'
+		return 1
+	fi
+}
+
+test_parse_args_forwards_legacy_force_without_special_handling() {
+	local output=""
+
+	if ! output="$(
+		parse_args copilot --force
+		printf 'policy=%s\n' "$OVERWRITE_POLICY"
+		printf 'args=%s\n' "${PASSTHROUGH_ARGS[*]}"
+	)"; then
+		fail_test 'parse_args should not reject the legacy force option locally'
+		return 1
+	fi
+
+	[[ "$output" == *"policy=ask"* ]] || fail_test 'legacy force passthrough should preserve the default overwrite policy' || return 1
+	[[ "$output" == *"args=copilot --force"* ]] || fail_test 'parse_args should preserve the legacy force argument for DODKit' || return 1
+}
+
+test_parse_args_rejects_missing_overwrite_value() {
+	if (parse_args --overwrite 2>/dev/null); then
+		fail_test 'parse_args accepted a missing overwrite value'
+		return 1
+	fi
+}
+
+test_should_overwrite_honors_explicit_policies() {
+	OVERWRITE_POLICY=yes
+	should_overwrite 'yes-file' || fail_test 'overwrite=yes should accept a changed file' || return 1
+
+	OVERWRITE_POLICY=no
+	if should_overwrite 'no-file'; then
+		fail_test 'overwrite=no should preserve a changed file'
+		return 1
+	fi
+}
+
+run_overwrite_sequence_in_pty() {
+	if ! command -v script >/dev/null 2>&1; then
+		printf '[INFO] skipping interactive overwrite test because script is unavailable\n'
+		return 0
+	fi
+
+	printf 'a\n' | OVERWRITE_INSTALLER_PATH="$PROJECT_DIRECTORY/install.sh" script -qec "bash -c 'source \"\$OVERWRITE_INSTALLER_PATH\"; OVERWRITE_POLICY=ask; if should_overwrite first; then echo first-accepted; else echo first-rejected; fi; if should_overwrite second; then echo second-accepted; else echo second-rejected; fi; echo policy=\$OVERWRITE_POLICY'" /dev/null 2>&1
+}
+
+test_interactive_overwrite_all_switches_remaining_files_to_yes() {
+	local output=""
+	local prompt_count=""
+
+	output="$(run_overwrite_sequence_in_pty)"
+	assert_contains 'Overwrite this file? [Y/n/a] (a = all remaining files):' <(printf '%s\n' "$output") 'interactive overwrite prompt should expose the all option' || return 1
+	assert_contains 'first-accepted' <(printf '%s\n' "$output") 'all response should accept the current file' || return 1
+	assert_contains 'second-accepted' <(printf '%s\n' "$output") 'all response should accept subsequent files' || return 1
+	assert_contains 'policy=yes' <(printf '%s\n' "$output") 'all response should switch the session policy to yes' || return 1
+
+	prompt_count="$(printf '%s' "$output" | grep -o 'Overwrite this file?' | wc -l | tr -d ' ')"
+	[[ "$prompt_count" == "1" ]] || fail_test "all response should prompt only once (actual=$prompt_count)" || return 1
 }
 
 write_mock_command() {
@@ -119,13 +199,15 @@ test_default_helper_deployment_and_dodkit_order() {
 	fi
 }
 
-test_existing_assets_protected_and_helper_overwritten() {
+test_existing_assets_updated_by_default_and_helper_overwritten() {
 	local existing_agents='# user-owned AGENTS.md'
+	local existing_principles='# user-owned PRINCIPLES.md'
 	local existing_helper='# stale helper'
 
 	prepare_fixture protected-assets
-	mkdir -p "$TARGET_ROOT/.dev"
+	mkdir -p "$TARGET_ROOT/.dev" "$TARGET_ROOT/.docs"
 	printf '%s\n' "$existing_agents" > "$TARGET_ROOT/AGENTS.md"
+	printf '%s\n' "$existing_principles" > "$TARGET_ROOT/.docs/PRINCIPLES.md"
 	printf '%s\n' "$existing_helper" > "$TARGET_ROOT/.dev/dev-tools.sh"
 
 	(
@@ -133,9 +215,63 @@ test_existing_assets_protected_and_helper_overwritten() {
 		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot </dev/null > "$OUTPUT_LOG" 2>&1
 	)
 
-	assert_contains "$existing_agents" "$TARGET_ROOT/AGENTS.md" 'preserve existing AGENTS.md without force' || return 1
+	cmp -s "$SOURCE_ROOT/templates/AGENTS.md" "$TARGET_ROOT/AGENTS.md" || fail_test 'default ask policy should update AGENTS.md without a TTY' || return 1
+	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'default ask policy should update PRINCIPLES.md without a TTY' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
 	assert_contains 'using default helper directory: .dev' "$OUTPUT_LOG" 'use default destination without a TTY' || return 1
+}
+
+test_overwrite_no_preserves_local_assets_and_forwards_policy() {
+	local existing_agents='# user-owned AGENTS.md'
+	local existing_principles='# user-owned PRINCIPLES.md'
+
+	prepare_fixture overwrite-no
+	mkdir -p "$TARGET_ROOT/.docs" "$TARGET_ROOT/.dev"
+	printf '%s\n' "$existing_agents" > "$TARGET_ROOT/AGENTS.md"
+	printf '%s\n' "$existing_principles" > "$TARGET_ROOT/.docs/PRINCIPLES.md"
+	printf '%s\n' '# stale helper' > "$TARGET_ROOT/.dev/dev-tools.sh"
+
+	(
+		cd "$TARGET_ROOT"
+		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot --overwrite no </dev/null > "$OUTPUT_LOG" 2>&1
+	)
+
+	assert_contains "$existing_agents" "$TARGET_ROOT/AGENTS.md" 'overwrite=no should preserve AGENTS.md' || return 1
+	assert_contains "$existing_principles" "$TARGET_ROOT/.docs/PRINCIPLES.md" 'overwrite=no should preserve PRINCIPLES.md' || return 1
+	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh" || fail_test 'overwrite=no should not suppress unconditional helper updates' || return 1
+	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
+	assert_contains 'no' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
+}
+
+test_overwrite_yes_updates_local_assets_and_forwards_policy() {
+	prepare_fixture overwrite-yes
+	mkdir -p "$TARGET_ROOT/.docs"
+	printf '%s\n' '# stale AGENTS.md' > "$TARGET_ROOT/AGENTS.md"
+	printf '%s\n' '# stale PRINCIPLES.md' > "$TARGET_ROOT/.docs/PRINCIPLES.md"
+
+	(
+		cd "$TARGET_ROOT"
+		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot --overwrite yes </dev/null > "$OUTPUT_LOG" 2>&1
+	)
+
+	cmp -s "$SOURCE_ROOT/templates/AGENTS.md" "$TARGET_ROOT/AGENTS.md" || fail_test 'overwrite=yes should update AGENTS.md' || return 1
+	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'overwrite=yes should update PRINCIPLES.md' || return 1
+	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
+	assert_contains 'yes' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
+}
+
+test_legacy_force_is_forwarded_to_dodkit() {
+	prepare_fixture legacy-force
+
+	(
+		cd "$TARGET_ROOT"
+		if ! setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot --force </dev/null > "$OUTPUT_LOG" 2>&1; then
+			fail_test 'installer should forward the legacy force option to DODKit'
+			return 1
+		fi
+	)
+
+	assert_contains '--force' "$DODKIT_LOG" 'forward the legacy force option to DODKit'
 }
 
 test_existing_dev_directory_destination_prompt() {
@@ -199,7 +335,17 @@ run_test() {
 }
 
 run_test 'default helper deployment and DODKit order' test_default_helper_deployment_and_dodkit_order
-run_test 'protected assets and helper overwrite' test_existing_assets_protected_and_helper_overwritten
+run_test 'overwrite parser preserves explicit passthrough' test_parse_args_accepts_overwrite_policy_and_preserves_passthrough
+run_test 'overwrite parser defaults to ask' test_parse_args_defaults_to_ask
+run_test 'overwrite parser rejects invalid values' test_parse_args_rejects_invalid_overwrite_values
+run_test 'overwrite parser forwards legacy force' test_parse_args_forwards_legacy_force_without_special_handling
+run_test 'overwrite parser rejects missing values' test_parse_args_rejects_missing_overwrite_value
+run_test 'overwrite policy honors explicit values' test_should_overwrite_honors_explicit_policies
+run_test 'interactive overwrite all switches remaining files' test_interactive_overwrite_all_switches_remaining_files_to_yes
+run_test 'default overwrite updates assets and helper' test_existing_assets_updated_by_default_and_helper_overwritten
+run_test 'overwrite=no preserves local assets' test_overwrite_no_preserves_local_assets_and_forwards_policy
+run_test 'overwrite=yes updates local assets' test_overwrite_yes_updates_local_assets_and_forwards_policy
+run_test 'legacy force option is forwarded to DODKit' test_legacy_force_is_forwarded_to_dodkit
 run_test 'existing .dev destination prompt' test_existing_dev_directory_destination_prompt
 run_test 'helper failure status is reported' test_helper_failure_status_is_reported
 run_test 'DODKit failure status is reported' test_dodkit_failure_status_is_reported

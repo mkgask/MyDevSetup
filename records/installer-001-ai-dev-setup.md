@@ -409,3 +409,152 @@ Append rules:
 - Current conclusion: 初期インストーラーの履歴と開発用ツールの議論を分離し、決定IDの参照互換性を維持したまま、今後の変更責務を `dev-tools` に集約する。
 - Promotion to DECISIONS.yml: updated -> `installer-011-optional-tool-installation`（カテゴリ、リンク、installer-011-7）
 - Evidence / references (optional): `records/dev-tools-001-optional-tool-installation.md`
+
+### Entry 0026 (2026-08-01T00:00:00Z)
+- Why now: DODKit の `install.sh` が `--force` から `--overwrite yes|no` へ移行し、省略時を `ask` としているため、MyDevSetup の同じ委譲入口とローカルアセット上書き契約を揃えるか確認する。
+- Findings / trade-offs:
+  - **DODKit の現行契約**: `OVERWRITE_POLICY=ask` を初期値とし、`--overwrite` の値は `yes|no` のみ受け付け、値の欠落・不正値・旧 `--force` は拒否する。省略時の対話プロンプトは `Overwrite this file? [Y/n/a] (a = all remaining files):` とし、Enter は現在のファイルだけ、`n` は現在のファイルだけを保持、`a` は現在のインストール中だけ以降を `yes` 相当にする。利用可能な端末がない `ask` は自動更新し、明示的な `yes|no` は端末検出より優先する。
+  - **MyDevSetup の現状**: `FORCE_OVERWRITE` と `--force` をローカルの `AGENTS.md` / `.docs/PRINCIPLES.md` 上書き判定に使い、対話時は `[y/N]`、非対話時は既存ファイルを保持する。受け取った引数列は DODKit へそのまま透過しているため、ローカル判定だけを更新しても委譲先との CLI 契約がずれる。
+  - **既存の例外**: `installer-011-9-helper-destination` は `.dev/dev-tools.sh` を配置先へ上書きすることを明示している。この helper の無条件更新は今回のオプション形状変更の対象に含めず、既存の `dev-tools` 責務を維持する。
+  - **影響する周辺領域**: `install.sh` のパーサー、ヘルプ、AGENTS.md / PRINCIPLES.md の競合処理、DODKit 引数透過、focused shell tests、`DECISIONS.yml` の `--force` 表記が対象になる。DODKit 自体の実装やターゲット集合、dev-tools.sh の導入ロジックは変更しない。
+  - **候補方針**: MyDevSetup も `OVERWRITE_POLICY=ask` を既定値とし、`--overwrite yes|no` をローカルの管理対象テンプレートへ適用する。`AGENTS.md` と `.docs/PRINCIPLES.md` は DODKit と同じ `ask/yes/no` の意味論と対話プロンプトを使い、受領した `--overwrite` 引数は変更せず DODKit へ渡す。旧 `--force` は拒否する。
+- Focus areas: (1) `--overwrite` の検証とローカル上書き判定、(2) DODKit への引数透過とヘルプ／テストの用語同期、(3) helper の既存無条件更新境界を保ったままの回帰確認。
+- Explicit exclusions: DODKit `install.sh` の再変更、`.dev/dev-tools.sh` の上書き契約変更、DODKit 以外のターゲット追加、dev-tools helper の内部ロジック変更。
+- Current conclusion: DODKit との CLI 契約を一致させる候補方向は、既存のテンプレート配布・DODKit 委譲・helper 境界を維持しながら実装可能である。`DECISIONS.yml` の `installer-005-2`、`installer-009-2`、DODKit 引数透過契約、`installer-011-6` の旧用語を更新対象として、discussion-validation で方向性と契約完全性を確認する。
+- Promotion to DECISIONS.yml: pending（discussion-validation 後）
+- Evidence / references (optional): `DODKit/install.sh`、`DODKit/DECISIONS.yml`、`DODKit/records/agent-002-installer-delivery.md`、`MyDevSetup/install.sh`、`MyDevSetup/tests/install.test.sh`
+
+### Entry 0027 (2026-08-01T00:00:01Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0026 の候補方針を元の目的、既存契約、隣接する helper 境界へ照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: DODKit の実装・決定・README・既存記録、MyDevSetup の install.sh・focused shell tests・決定・関連記録を確認し、パーサー、ローカル配布、DODKit 委譲、helper の例外、用語同期の主要領域をカバーした。
+  - **Focus justification**: 変更要求に直接関係する `--overwrite` の検証、`AGENTS.md` / `PRINCIPLES.md` の競合処理、DODKit への引数透過、テストとヘルプに絞った。helper の無条件更新、DODKit 実装、ターゲット集合、dev-tools 内部ロジックは既存の明示契約により除外できる。
+  - **Directional fit**: DODKit と MyDevSetup の入口を同じ明示的な上書き指定へ揃えるため、ユーザー要求と標準汎用インストーラーの目的に合う。MyDevSetup は DODKit を bundled installer として呼び出すため、同じ引数を透過することも維持される。
+  - **Contract fit**: テンプレート由来、workspace-only、冪等性、fail-fast、既存本文を保護する add-only 追記の契約と衝突しない。`AGENTS.md` / `PRINCIPLES.md` の旧 `--force` 契約は更新が必要だが、`.dev/dev-tools.sh` の上書きは `installer-011-9` の独立した既存契約として維持する。
+  - **Hidden bindings**: `ask` の exact prompt、Enter / `n` / `a` の適用範囲、非対話時の自動更新、明示値の端末優先、旧 `--force` の拒否、helper の無条件更新例外を active decisions に明記する必要がある。`installer-011-6` の「--force なし」表記も add-only の責務境界を表す用語へ更新する。
+  - **Validation result**: PASS — 候補方向は元の目的と active constraints に適合し、実装前に昇格可能である。
+- Current conclusion: `installer-012-overwrite-policy` と必要な sub_decisions を追加し、`installer-005-2`、`installer-009-2`、`installer-007-4`、`installer-011-6` の active wording / status を更新してから、実装へ進める。
+- Promotion to DECISIONS.yml: promoted -> `installer-012-overwrite-policy`（および必要な sub_decisions）、updated -> `installer-005-2`、`installer-009-2`、`installer-007-4`、`installer-011-6`
+- Evidence / references (optional): `DODKit/install.sh` の `parse_args` / `confirm_overwrite` / `should_overwrite`、`bash tests/install.test.sh` の overwrite-policy tests
+
+### Entry 0028 (2026-08-01T00:00:02Z)
+- Why now: Gate B（implementation）として、promoted 済みの `installer-012-overwrite-policy` を MyDevSetup の install.sh と focused tests へ反映する。
+- Findings / trade-offs:
+  - `FORCE_OVERWRITE` を `OVERWRITE_POLICY="ask"` へ置き換え、`--overwrite yes|no` の値検証、欠落・不正値・旧 `--force` の拒否、受領引数列の DODKit への透過を実装した。
+  - AGENTS.md と .docs/PRINCIPLES.md は DODKit と同じ `ask/yes/no` の意味論、exact prompt、`a` のセッション限定切替、非対話時の自動更新を使う。`.dev/dev-tools.sh` は既存契約どおり `--overwrite no` でも無条件更新する。
+  - ヘルプを `--overwrite yes|no` に同期し、parser、既定値、明示 yes/no、interactive `a`、default 非対話更新、旧 option 拒否、DODKit 引数透過、helper 例外の focused tests を追加・更新した。
+  - `bash -n install.sh` と `bash tests/install.test.sh` は PASS。focused suite は 14 tests passed。`get_errors` は install.sh、tests/install.test.sh、DECISIONS.yml ともに diagnostics なし。
+- Current conclusion: promoted decision contract に従う実装と検証が完了した。DODKit 側の実装・決定・ドキュメントは変更せず、MyDevSetup 側の入口とローカル管理対象だけを同期した。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `MyDevSetup/install.sh`、`MyDevSetup/tests/install.test.sh`、`bash -n install.sh`、`bash tests/install.test.sh`
+
+### Entry 0029 (2026-08-01T00:00:03Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、overwrite-policy 実装、active decisions、記録、用語、変更範囲の整合を確認する。
+- Findings / trade-offs:
+  - **Executable validation**: `python3` の YAML parse、`bash -n install.sh`、`bash tests/install.test.sh` は PASS。focused suite は 14 tests passedし、parser、既定 ask、明示 yes/no、対話 `a`、非対話更新、旧 option 拒否、DODKit 引数透過、helper 例外を検証した。
+  - **Artifact alignment**: `install.sh` の実装と `installer-012-overwrite-policy`、`installer-005-2`、`installer-009-2`、`installer-007-4`、`installer-011-6` の active constraints が一致する。`DECISIONS.yml` の変更済み status は `✅️Implementation Approved` で、link は本記録を指す。
+  - **Terminology alignment**: user-facing help と実装の主契約は `--overwrite yes|no`。active decision に残る `--force` は旧 option を拒否する契約だけであり、過去の discussion history は append-only のため書き換えていない。
+  - **Scope and hygiene**: `get_errors` は対象4ファイルで diagnostics なし、`git diff --check` は PASS。MyDevSetup の4ファイルだけを変更し、DODKit の実装・決定・README は変更していない。
+- Current conclusion: implementation-validation の executable、artifact、terminology、decision-record hygiene の確認を満たし、本スコープを closeout できる。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `python3` YAML parse、`bash -n install.sh`、`bash tests/install.test.sh`、`git diff --check`、`get_errors`
+
+### Entry 0030 (2026-08-01T00:00:04Z)
+- Why now: ユーザー確認により、旧 `--force` は MyDevSetup 側で特別に拒否せず、DODKit と同じく未対応引数として通常の委譲境界で扱う方針を確認する。
+- Findings / trade-offs:
+  - **DODKit の現行処理**: `parse_args` は `--overwrite` と既知ターゲット／help だけを解釈し、それ以外は共通の `*` 分岐で `Unknown argument` として拒否する。`--force` 専用分岐は存在しない。
+  - **MyDevSetup の現状**: `parse_args` は受領引数を DODKit へ透過する設計だが、`--force` だけは専用分岐でローカル拒否している。そのため旧 option の拒否責任が委譲先と重複している。
+  - **候補方針**: `--overwrite` の値検証（欠落・不正値）は MyDevSetup が引き続き担当し、それ以外の引数は特別扱いせず `PASSTHROUGH_ARGS` のまま DODKit へ渡す。`--force` は実際の DODKit 実行時に DODKit の一般的な unsupported-argument 処理で拒否される。
+- Focus areas: MyDevSetup parser の `--force` 専用分岐、legacy option の passthrough test、`installer-012-2-overwrite-argument-validation` の wording。
+- Explicit exclusions: DODKit の実装・決定・ドキュメント変更、`--overwrite` の検証ルール変更、他の未知引数の仕様変更。
+- Current conclusion: `--force` を MyDevSetup で特別扱いしない候補は、既存の引数透過契約と DODKit の validation ownership に一致する。discussion-validation で、`--overwrite` の fail-fast を保ちつつ legacy option だけを generic passthrough にできることを確認する。
+- Promotion to DECISIONS.yml: pending（discussion-validation 後）
+- Evidence / references (optional): `DODKit/install.sh` の `parse_args`、`MyDevSetup/install.sh` の `parse_args`、`installer-012-2-overwrite-argument-validation`
+
+### Entry 0031 (2026-08-01T00:00:05Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0030 の候補方針を DODKit の parser、既存の引数透過契約、`--overwrite` validation と照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: DODKit / MyDevSetup 両方の `parse_args`、MyDevSetup の `installer-012-2`、引数透過を定める `installer-007-4`、focused tests と discussion record を確認した。
+  - **Focus justification**: 変更対象は MyDevSetup の `--force` 専用分岐とそのテスト・decision wording に限定できる。DODKit の実装・決定・ドキュメント、`--overwrite` の検証、他の未知引数の扱いは対象外のまま維持する。
+  - **Directional fit**: unsupported argument の validation ownership を DODKit に揃え、MyDevSetup の既存 passthrough 設計と一致する。MyDevSetup がローカルで同じエラーを重複生成する必要はない。
+  - **Contract fit**: `--overwrite` の値欠落・不正値は引き続き MyDevSetup が fail-fast し、有効な引数列は変更せず DODKit へ渡す。`--force` は DODKit 到達後に一般の unknown-argument 処理で拒否されるため、拒否責任の変更は legacy option に限定される。
+  - **Validation result**: PASS — DODKit の `parse_args --force` が `Unknown argument: --force` を返すことを確認し、候補方向は元の目的と active constraints に適合する。
+- Current conclusion: `installer-012-2-overwrite-argument-validation` の旧 `--force` 専用拒否を削除し、unsupported argument は DODKit へ透過する契約へ更新してから実装する。
+- Promotion to DECISIONS.yml: promoted -> `installer-012-2-overwrite-argument-validation`
+- Evidence / references (optional): `DODKit/install.sh` `parse_args --force` の generic rejection check
+
+### Entry 0032 (2026-08-01T00:00:06Z)
+- Why now: Gate B（implementation）として、promoted 済みの parser-boundary 契約を MyDevSetup の install.sh と focused tests へ反映する。
+- Findings / trade-offs:
+  - MyDevSetup `parse_args` から `--force` 専用の拒否分岐を削除し、`--overwrite` の欠落・不正値検証以外は既存どおり受領引数列を保持して DODKit へ渡す形にした。
+  - focused tests を、local parser が `--force` を拒否せず passthrough することと、installer が DODKit へ同引数を渡すことの検証へ更新した。
+  - `bash -n install.sh` と `bash tests/install.test.sh` は PASS。focused suite は 15 tests passed。DODKit の generic `Unknown argument` 処理と DODKit 側のファイルは変更していない。
+- Current conclusion: `installer-012-2-overwrite-argument-validation` の更新内容に沿う実装が完了した。MyDevSetup は unsupported argument の所有権を DODKit に委譲し、`--overwrite` の local validation は維持している。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `MyDevSetup/install.sh`、`MyDevSetup/tests/install.test.sh`、`DODKit/install.sh` `parse_args --force`、`bash tests/install.test.sh`
+
+### Entry 0033 (2026-08-01T00:00:07Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、unsupported argument の責務移譲、active decision、テスト、用語、変更範囲の整合を確認する。
+- Findings / trade-offs:
+  - **Executable validation**: `DECISIONS.yml` の YAML parse、`bash -n install.sh`、`bash tests/install.test.sh`、`git diff --check` は PASS。focused suite は 15 tests passedし、`--force` の parser passthrough と DODKit 委譲を含む。
+  - **Artifact alignment**: `installer-012-2-overwrite-argument-validation` は `✅️Implementation Approved` で、`--overwrite` の local validation と unsupported argument の DODKit 委譲を明示している。実装は `--force` 専用分岐を持たない。
+  - **Terminology and ownership**: MyDevSetup の現行コードに `--force` の特別処理はなく、DODKit 側の一般的な `Unknown argument` 処理へ到達する。過去の discussion history にある旧方針は append-only のため保持した。
+  - **Scope and hygiene**: 対象ファイルの diagnostics はすべてなし。DODKit の実装・決定・ドキュメントは変更していない。
+- Current conclusion: implementation-validation の executable、artifact、ownership、terminology、decision-record hygiene の確認を満たし、本変更を closeout できる。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `DODKit/install.sh` の generic argument rejection check、`bash tests/install.test.sh`、`git diff --check`、`get_errors`
+
+### Entry 0034 (2026-08-01T00:00:08Z)
+- Why now: `install.sh` の一部 warning が `[⚠️WARNING]` を直接 `printf` しており、既存の `log_warning` 契約へ統一できるか確認する。
+- Findings / trade-offs:
+  - **Bounded landscape scan**: `install.sh` の `log_warning`、`confirm_overwrite`、`select_dev_tools_destination`、配布失敗・skip 通知と、`DECISIONS.yml` の `installer-008-console-log-format` を確認した。warning の直接 `printf` は `confirm_overwrite` の対話時表示に限定され、他の本番 warning はすでに `log_warning` を使っている。
+  - **TTY boundary**: `/dev/tty` は warning のラベル生成に必須ではなく、対話 warning と overwrite prompt を端末へ固定するために使われている。`log_warning "File exists: ..." >/dev/tty` とすれば既存の出力先を維持できる。prompt 本体と `read` は対話制御のため `printf` / `read` を残す。
+  - **Focus areas**: `confirm_overwrite` の warning 出力を `log_warning` へ置換し、stdout へ出す非対話系 warning と `[⚠️WARNING]` の色・ラベル契約を回帰確認する。
+  - **Explicit exclusions**: prompt 文、`/dev/tty` の入出力判定、`log_warning` の出力先・色判定、DODKit、`templates/dev-tools.sh` の logging 実装は変更しない。
+- Current conclusion: 既存の `installer-008` 契約に沿って、warning 表示だけを `log_warning` に統一できる。`/dev/tty` は対話 UX のために残し、prompt の直接 `printf` までログ API として扱わない。
+- Promotion to DECISIONS.yml: none（既存 decision の実装整合化のみ）
+- Evidence / references (optional): `MyDevSetup/install.sh` の `log_warning` / `confirm_overwrite`、`MyDevSetup/DECISIONS.yml` の `installer-008-console-log-format`、`records/dev-tools-001-optional-tool-installation.md` の logging boundary
+
+### Entry 0035 (2026-08-01T00:00:09Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0034 の logging 統一方針を既存 decision、TTY境界、ログと prompt の責務分離へ照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: `install.sh` の共通 logger、上書き確認、helper 配置先選択、アセット skip、既存の logging boundary と `installer-008-console-log-format` を確認した。warning の直接 `printf` と prompt の直接 `printf` を区別できている。
+  - **Focus justification**: 変更対象を `confirm_overwrite` の warning 本体に限定し、`/dev/tty` の prompt 入出力、非対話時の helper directory warning、helper 内部 logging、DODKit は除外できる。
+  - **Directional fit**: 本番状態通知を共通 logger へ寄せる既存方針と一致し、warning のラベル・色・出力先を `log_warning` に一元化できる。`>/dev/tty` を logger 呼び出しに付けることで対話時の表示先は維持される。
+  - **Contract fit**: `installer-008` の `[⚠️WARNING]` と黄色表示を維持し、prompt の exact text、TTY 判定、`NO_COLOR`、非対話時の自動更新も変更しない。新しい independently active rule は発生していない。
+  - **Validation result**: PASS — 候補方向は元の logging objective と active constraints に適合し、decision promotion は不要。実装は `confirm_overwrite` の warning 分岐を logger 呼び出しへ置換するだけで足りる。
+- Current conclusion: logging 統一方針を実装へ進める。対象 decision は既存の `installer-008-console-log-format` で、`DECISIONS.yml` の更新は行わない。
+- Promotion to DECISIONS.yml: none（discussion-validation PASS、既存 decision の適用のみ）
+- Evidence / references (optional): `MyDevSetup/install.sh`、`MyDevSetup/DECISIONS.yml` の `installer-008-console-log-format`、`records/dev-tools-001-optional-tool-installation.md` Entry 0008
+
+### Entry 0036 (2026-08-01T00:00:10Z)
+- Why now: Gate A step 3（decision-promotion）として、validation 済みの logging 統一方針を active decision set と照合する。
+- Findings / trade-offs:
+  - 適用対象は既存の `installer-008-console-log-format` と、そこから導かれる「本番 warning は `log_warning` を使う」という実装上の整合性である。
+  - `log_warning` のラベル・色・出力先、TTY prompt の exact text と入出力、`NO_COLOR`、非対話時挙動は既存契約として明示済みで、追加の sub_decision は不要である。
+  - `DECISIONS.yml` の status、link、decision wording を変更する必要はない。prompt の直接 `printf` をログ API として扱わない境界も今回の実装スコープ内で明確になっている。
+- Current conclusion: Gate A を完了し、`DECISIONS.yml` を変更せずに実装へ進む。実装対象は `confirm_overwrite` の warning 出力のみとする。
+- Promotion to DECISIONS.yml: none（既存 decision を適用）
+- Evidence / references (optional): `MyDevSetup/DECISIONS.yml` の `installer-008-console-log-format`、Entry 0035 の discussion-validation PASS
+
+### Entry 0037 (2026-08-01T00:00:11Z)
+- Why now: Gate B（implementation）として、`confirm_overwrite` の warning 表示を既存の `log_warning` 契約へ統一する。
+- Findings / trade-offs:
+  - `has_tty` 分岐では `log_warning "File exists: ..." >/dev/tty` とし、warning の出力先を従来どおり端末へ固定した。
+  - `[[ -t 0 ]]` 分岐では同じ warning を通常の `log_warning` で表示する。
+  - overwrite prompt の `printf` と回答の `read` は対話制御そのものなので、`/dev/tty` 入出力を維持した。
+  - `bash tests/install.test.sh` は PASS（15 tests）。
+- Current conclusion: `installer-008-console-log-format` の logger 境界に沿う実装を完了した。新しい binding constraint は発生していない。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `MyDevSetup/install.sh` の `confirm_overwrite`、`bash tests/install.test.sh`
+
+### Entry 0038 (2026-08-01T00:00:12Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、warning logger 統一後の実装、active decision、記録、変更範囲を最終確認する。
+- Findings / trade-offs:
+  - **Executable validation**: `bash tests/install.test.sh` は 15 tests passed、`bash -n install.sh`、`DECISIONS.yml` の YAML parse、`git diff --check` も PASS。
+  - **Logger alignment**: `install.sh` の `[⚠️WARNING]` 直書きは `log_warning` 関数本体だけに残り、`confirm_overwrite` の warning 表示は対話時も非対話時も `log_warning` を使う。prompt の `printf` / `read` と `/dev/tty` は対話制御として維持した。
+  - **Artifact and terminology alignment**: `installer-008-console-log-format` の warning label/color 契約、Entry 0034〜0037 の logging boundary、現行の `log_warning` 名称と整合している。`DECISIONS.yml` の status/link は変更不要のままである。
+  - **Scope and hygiene**: 対象4ファイルの diagnostics はすべてなし。今回の実装で DODKit、helper 内部、prompt 契約、overwrite policy の意味論は変更していない。
+- Current conclusion: implementation-validation の executable、artifact、terminology、decision-record hygiene、scope の確認を満たし、本変更を closeout できる。残存する `printf` は logger 実装または prompt/data output であり、warning の共通化対象ではない。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `bash tests/install.test.sh`、`bash -n install.sh`、`python3` YAML parse、`git diff --check`、`get_errors`
