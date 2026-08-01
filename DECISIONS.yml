@@ -220,15 +220,17 @@ decisions:
 
         - id: installer-011-2-installation-backends
           decision: >
-            対応環境は Linux/WSL に限定し、導入方法は対象ツールを扱える既存の system、nix、proto、mise、asdf、
+            対応環境は Linux/WSL に限定し、導入方法は対象ツールを扱える既存の system、nix、proto、mise、asdf、brew、
             official の経路から選ぶ。nix と mise は manager側のread-only capability probeで対象識別子を確認できた場合だけ候補にし、
             asdf は既に登録済みのplugin inventoryで対象pluginを確認できた場合だけ候補にする。probeの失敗・未知識別子・未登録pluginは候補から除外し、
             probeは導入、plugin登録、remote一覧の同期、設定変更、永続PATH変更を行わない。protoとsystemは安全な共通probeを採用するまで現行の明示的な識別子mappingを使い、
-            system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。マネージャー本体や不足プラグインは自動導入しない。
+            system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。brewはsystem routeから分離し、既存のbrew commandと
+            Python・Ruby・rgの明示的なpackage mappingで候補にする。brewのformula検索やtap追加を行わず、マネージャー本体や不足プラグインは自動導入しない。
             uv は公式standalone installerを使う official route とし、Serena は uv が利用可能な場合だけ `uv tool install` を使う uv-tool route とする。
-            --global では全プロジェクトから利用可能な導入先を持つ経路だけを候補にし、該当経路がなければ skip とする。
+            --global では全プロジェクトから利用可能な導入先を持つ system、nix、brew、official、uv-tool 経路だけを候補にし、該当経路がなければ skip とする。
             uv が未導入または導入失敗した場合、Serena の uv-tool route は候補にせず、Serenaを暗黙に別経路で導入しない。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []
 
         - id: installer-011-3-command-and-version-contract
@@ -279,10 +281,12 @@ decisions:
             各ツールの選択肢にはmanager-specific capability probeまたは現行の明示的なmappingで利用可能と判定された導入方法だけを表示し、常に skip を含める。
             identifier mappingはmanager側の名前へ変換するためのalias normalizationだけを担い、mapping自体で未確認の対応可否を作らない。
             未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。asdfはremote plugin一覧だけでは候補にしない。
-            system は Python・Ruby・rg の既存標準経路を既定とし、rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
+            routeの候補順は system、nix、proto、mise、asdf、brew、official、uv-tool、skip とする。system は Python・Ruby・rg の既存標準経路を既定とし、brewは独立routeとして
+            Python・Ruby・rgだけを既存の明示的なmappingで扱う。rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
             Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示する。
             選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []
 
         - id: installer-011-9-helper-destination
@@ -325,8 +329,10 @@ decisions:
         - id: installer-011-14-global-install-scope
           decision: >
             --global は install モードで導入したバイナリを全プロジェクトから利用可能にする導入スコープだけを表し、initの適用範囲、manager設定全体の永続化、agent設定のglobal適用は含めない。
-            --global の候補はそのスコープを実現できる導入経路だけに限定し、init --global はエラーとする。uv official と Serena uv-tool はユーザー単位のbinへ導入し全プロジェクトから呼び出せるため候補にできるが、protoのグローバルpin、shell起動ファイル変更、manager設定の永続変更は --global でも行わない。
+            --global の候補はそのスコープを実現できる system、nix、brew、official、uv-tool 経路だけに限定し、init --global はエラーとする。brewは既存のbrew prefixへ導入し全プロジェクトから呼び出せるため候補にできる。
+            uv official と Serena uv-tool はユーザー単位のbinへ導入し全プロジェクトから呼び出せるため候補にできるが、protoのグローバルpin、shell起動ファイル変更、manager設定の永続変更は --global でも行わない。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []
 
         - id: installer-011-15-mode-selection
@@ -380,9 +386,11 @@ decisions:
 
         - id: installer-011-21-dry-run-preview
           decision: >
-            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序、`--global`候補制限、interactive時の一回のroute選択だけを行い、実際の導入を開始しない読み取りpreviewとする。
+            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序（system、nix、proto、mise、asdf、brew、official、uv-tool、skip）、
+            `--global`候補制限、interactive時の一回のroute選択だけを行い、実際の導入を開始しない読み取りpreviewとする。
             既存ツールは `present` として再導入せず、不足ツールは選択またはTTYなし時のconfigured default routeを `planned` として表示する。利用可能な導入経路がない、または `skip` が選ばれた対象は `skip` と表示する。
-            各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。system package manager、nix、proto、mise、asdf、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。
+            各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。system package manager、nix、proto、mise、asdf、brew、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。
             preview対象を最後まで処理し、preview結果を表示できれば終了statusは0とする。引数エラーまたはplanned command生成自体の失敗は非0とする。`--global` は既存のglobal install scopeをroute候補とplanned commandへ適用し、`--debug` は実行されないinstall commandのtraceを追加せず、表示されたplanned detailを診断情報とする。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []

@@ -432,3 +432,37 @@ Append rules:
 - Test result: dry-runのparser、help、init/status拒否、non-interactive default preview、interactive route selection、副作用なし、global preview、全routeのplanned commandをfocused fixtureで確認した。`bash tests/dev-tools.test.sh` は13件、`bash tests/install.test.sh` は15件がpassした。
 - Validation evidence: helper／installer suite、Bash syntax、editor diagnostics、`git diff --check`、実環境の `./templates/dev-tools.sh install --dry-run </dev/null | cat` と `install --dry-run --global` を確認した。実環境では既存pythonを `present`、ruby/rgを `system` planned、routeのない対象を `skip` と表示し、global previewもstatus 0だった。ShellCheckは環境に存在しないため未実行である。
 - Decision result: `installer-011-5-failure-and-noninteractive-policy`、`installer-011-15-mode-selection`、`installer-011-21-dry-run-preview` を `✅️Implementation Approved` とした。実装により新たなbinding constraintは発生していない。
+
+### Entry 0042 (2026-08-02T00:00:03Z)
+- Why now: Homebrewが導入済みの環境でも、現在の候補表示は `system` routeの内部managerとしてしかbrewを扱わず、利用者が `brew` を選択肢として確認できない。ユーザー要望により、route順を `asdf`、`brew`、`official` とし、Homebrewを明示的なパッケージマネージャ候補として表示する必要がある。
+- Broad-scan findings:
+  - `find_system_package_manager` は現在 apt-get、dnf、yum、pacman、zypper、apk、brewを同じsystem manager探索に含め、`system_package_for_tool` はPython・Ruby・rgのbrew package名も既に持っている。`install_with_system` と `planned_install_command_for_route` にもbrew分岐があるため、package identifierとcommandの知識は既存実装に存在する。
+  - `available_routes_for_tool` はsystem、nix、proto、mise、asdf、official、uv-toolだけを候補として出すため、brew-only fixtureでは現在 `system` と `skip` しか表示されない。brewを別routeとして追加する場合、systemがbrewを内部選択し続けると同一導入操作が二重表示になる。
+  - route-specificな実装を追加する対象はbrewのavailability、global scope、install dispatch、dry-run planned command、候補順、focused testである。Homebrewのremote package検索、tap追加、brew本体の導入、shell設定変更は既存の「manager本体や不足pluginを自動導入しない」境界により対象外である。
+  - Homebrewはユーザーまたはシステムのprefixへ導入したCLIを複数プロジェクトから利用できるため、既存のglobal route契約に従って `--global` 候補にできる。候補の可否は `command -v brew` と既存の明示的なtool-to-package mappingだけで判定し、package availabilityのnetwork queryは行わない。
+- Focus areas:
+  - system routeからbrewを除外し、brew routeだけが `brew install <package>` を実行・表示する責務境界。
+  - `available_routes_for_tool` の `asdf` と `official` の間へのbrew追加、`--global`での候補制限、通常installと `install --dry-run` のidentifier・command一致。
+  - Python、Ruby、rgの既存brew package mappingを再利用し、rtk、codegraph、uv、SerenaへHomebrew対応を推測で追加しないこと。
+- Explicit exclusions: Homebrewのtapやformula検索、brew本体のインストール、未確認formulaの自動追加、default routeをsystemからbrewへ変更すること、top-level `install.sh` の変更、既存のnix/proto/mise/asdf/official/uv-tool routeの順序変更は今回の対象外とする。
+- Candidate direction: `find_system_package_manager` のsystem候補からbrewを外し、`brew_route_available`、`install_with_brew`、brewのplanned command生成とroute dispatchを追加する。候補列はsystem、nix、proto、mise、asdf、brew、official、uv-tool、skipとし、brewはglobal scopeをサポートする。brew routeの既定選択は新設せず、既存のtoolごとのconfigured defaultを維持する。
+- Current conclusion: brewは既存system implementationの別名ではなく、ユーザーがmanagerを比較・選択できる独立routeとして追加するのが適切である。systemからbrewを分離すればbrew-only環境で `brew` と表示でき、複数manager環境でも同じ操作を重複表示しない。dry-runの主要commandと実installのcommandは `brew install` で一致させる。
+- Next validation target: discussion-validationでは、systemからのbrew分離が既存のLinux package manager契約とdefault routeを壊さないこと、brewのglobal候補が既存scope契約に適合すること、brew-only・複数manager・dry-run・実install dispatchをfocused testで検証可能なこと、Homebrew対応範囲を既存mappingに限定することを確認する。
+- Promotion to DECISIONS.yml: pending（`installer-011-2-installation-backends`、`installer-011-8-install-method-selection`、`installer-011-14-global-install-scope`、`installer-011-21-dry-run-preview` のbrew route契約をdiscussion-validation後に更新する）。
+
+### Entry 0043 (2026-08-02T00:00:04Z)
+- Discussion-validation: broad scanはsystem manager探索、既存brew package mapping、route availability、通常install、planned command、global候補制限、既存focused test、関連decisionを確認しており、brewを独立routeへ分離するための主要な境界と重複表示のリスクを覆っている。
+- Focus validation: `asdf` と `official` の間へbrewを置く候補順、systemからbrewを除外する重複回避、Python・Ruby・rgだけの明示mapping再利用、brew-onlyと複数managerの候補表示、通常installとdry-runのcommand一致に絞ることは、 broad scanから直接導かれている。formula検索やtap管理を対象外にした理由も既存のmanager/plugin自動導入禁止と整合する。
+- Directional fit: brewを利用者が選択可能なmanagerとして表示することは、導入前にrouteを確認する目的と既存helperの責務に適合する。top-level `install.sh`、既存manager route、toolごとのconfigured defaultを変更せず、helper内のroute表現だけを拡張するためprematureなscope growthはない。
+- Contract fit: systemの既定route、常時 `skip`、manager本体・不足pluginの自動導入禁止、`--global`の全プロジェクト利用可能性、dry-runのcapability probe-only・副作用禁止を維持できる。brewは既に利用可能な `brew` commandと既存package mappingだけで判定し、remote formula queryや永続設定変更を行わない。
+- Hidden bindings: brew routeをglobal候補にすること、system routeからbrewを除外して同一commandの二重表示を防ぐこと、brew対応対象を既存mappingのPython・Ruby・rgに限定することは実装を誤ると選択結果へ影響するためactive decisionへ昇格する必要がある。新しい独立decision objectは不要で、関連する4 decisionへ分散して保持する。
+- Validation result: PASS。候補方向は元の要求、既存の不変条件、非ゴール、dry-run契約に適合し、必要な実装面とfocused validationも明確である。
+- Promotion targets: `installer-011-2-installation-backends` にbrew routeの明示mapping・systemからの分離・manager本体非導入、`installer-011-8-install-method-selection` にroute orderとbrew対象、`installer-011-14-global-install-scope` にbrewのglobal候補、`installer-011-21-dry-run-preview` にbrew planned commandと副作用禁止を追加し、4件を `⚠️Implementing` に更新する。
+
+### Entry 0044 (2026-08-02T00:00:05Z)
+- Implementation result: `templates/dev-tools.sh` のsystem manager探索からbrewを分離し、`brew_package_for_tool` と `brew_route_available` を追加した。brew routeはPython、Ruby、rgの既存package mappingだけを利用し、Homebrew formula検索やtap操作は行わない。
+- Route integration: 候補順を system、nix、proto、mise、asdf、brew、official、uv-tool、skip とし、brewをglobal候補へ追加した。`install_with_brew` は `brew install <package>` を実行し、`planned_install_command_for_route` と `install_with_route` も同じbrew commandへ接続した。system routeからbrew実行分岐を除去したため、brew-only環境で同一操作がsystemとbrewへ重複表示されない。
+- Dry-run result: interactiveな `install --dry-run` でbrewを選択すると `brew: brew install python` のplanned detailを表示し、non-interactiveのconfigured default、既存route、AGENTS.md非変更、manager command非実行の既存契約を維持した。
+- Test result: brew-only route、`asdf` の後にbrewが現れる順序、global filtering、Python・Ruby・rg package mapping、通常install dispatch、planned command、interactive dry-run summary、副作用なしをfocused fixtureで確認した。`bash tests/dev-tools.test.sh` は14件、`bash tests/install.test.sh` は15件がpassした。
+- Validation evidence: 4ファイルのeditor diagnostics、全Bash対象の `bash -n`、`git diff --check`、decision ID uniquenessを確認した。top-level `install.sh` は変更していない。ShellCheckは環境に存在しないため未実行である。
+- Decision result: `installer-011-2-installation-backends`、`installer-011-8-install-method-selection`、`installer-011-14-global-install-scope`、`installer-011-21-dry-run-preview` を `✅️Implementation Approved` とした。実装により新たなbinding constraintは発生していない。

@@ -281,7 +281,7 @@ system_manager_can_run() {
 find_system_package_manager() {
 	local manager_name=""
 
-	for manager_name in apt-get dnf yum pacman zypper apk brew; do
+	for manager_name in apt-get dnf yum pacman zypper apk; do
 		if ! command -v "$manager_name" >/dev/null 2>&1; then
 			continue
 		fi
@@ -335,6 +335,19 @@ system_route_available() {
 			;;
 	esac
 }
+
+	brew_package_for_tool() {
+		local tool_name="$1"
+
+		system_package_for_tool "$tool_name" brew
+	}
+
+	brew_route_available() {
+		local tool_name="$1"
+
+		command -v brew >/dev/null 2>&1 || return 1
+		brew_package_for_tool "$tool_name" >/dev/null
+	}
 
 nix_package_candidates() {
 	case "$1" in
@@ -510,7 +523,7 @@ uv_tool_route_available() {
 
 route_supports_global_scope() {
 	case "$1" in
-		system|nix|official|uv-tool)
+		system|nix|brew|official|uv-tool)
 			return 0
 			;;
 		*)
@@ -554,6 +567,11 @@ append_available_route() {
 				route_available=1
 			fi
 			;;
+		brew)
+			if brew_route_available "$tool_name"; then
+				route_available=1
+			fi
+			;;
 		official)
 			if official_route_available "$tool_name"; then
 				route_available=1
@@ -582,6 +600,7 @@ available_routes_for_tool() {
 	append_available_route "$tool_name" proto
 	append_available_route "$tool_name" mise
 	append_available_route "$tool_name" asdf
+	append_available_route "$tool_name" brew
 	append_available_route "$tool_name" official
 	append_available_route "$tool_name" uv-tool
 
@@ -731,13 +750,17 @@ install_with_system() {
 		apk)
 			run_as_root "$manager_name" add --no-cache "$package_name" || return $?
 			;;
-		brew)
-			run_recorded_command "$manager_name" install "$package_name" || return $?
-			;;
 		*)
 			return 1
 			;;
 	esac
+}
+
+install_with_brew() {
+	local tool_name="$1"
+	local package_name="$(brew_package_for_tool "$tool_name")"
+
+	run_recorded_command brew install "$package_name" || return $?
 }
 
 install_with_nix() {
@@ -871,9 +894,6 @@ planned_install_command_for_route() {
 			apk)
 				planned_command=("$manager_name" add --no-cache "$package_name")
 				;;
-			brew)
-				planned_command=("$manager_name" install "$package_name")
-				;;
 			*)
 				return 1
 				;;
@@ -882,6 +902,10 @@ planned_install_command_for_route() {
 			planned_command=(sudo "${planned_command[@]}")
 		fi
 		format_command "${planned_command[@]}"
+		;;
+		brew)
+		package_name="$(brew_package_for_tool "$tool_name")" || return 1
+		format_command brew install "$package_name"
 		;;
 		nix)
 		package_name="$(nix_package_for_tool "$tool_name")" || return 1
@@ -933,6 +957,9 @@ install_with_route() {
 		;;
 		asdf)
 		install_with_asdf "$tool_name"
+		;;
+		brew)
+		install_with_brew "$tool_name"
 		;;
 		official)
 		install_with_official "$tool_name"

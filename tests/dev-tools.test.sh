@@ -209,6 +209,44 @@ test_route_filtering() {
 
 	GLOBAL_INSTALL=1
 	routes="$(available_routes_for_tool python)"
+
+test_brew_route_is_explicit() {
+	local original_path="$PATH"
+	local routes=""
+	local global_routes=""
+	local planned_command=""
+
+	prepare_mock_environment brew-route
+	write_mock_command "$MOCK_BIN/brew" \
+		'printf "brew %s\\n" "$*" >> "$MOCK_LOG"'
+	write_mock_command "$MOCK_BIN/asdf" \
+		'if [[ "${1:-}" == "plugin" && "${2:-}" == "list" ]]; then printf "%s\\n" python; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/grep" 'exit 0'
+	ln -s "$(command -v bash)" "$MOCK_BIN/bash"
+	PATH="$MOCK_BIN"
+	export PATH
+	source "$HELPER_PATH"
+
+	routes="$(available_routes_for_tool python)"
+	planned_command="$(planned_install_command_for_route python brew)"
+
+	GLOBAL_INSTALL=1
+	global_routes="$(available_routes_for_tool python)"
+	GLOBAL_INSTALL=0
+
+	install_with_route python brew
+	PATH="$original_path"
+	export PATH
+
+	assert_equal $'asdf\nbrew\nskip' "$routes" 'brew is an explicit route after asdf' || return 1
+	assert_equal 'brew install python' "$planned_command" 'preview brew command' || return 1
+	assert_equal 'python' "$(system_package_for_tool python brew)" 'brew Python package mapping' || return 1
+	assert_equal 'ruby' "$(system_package_for_tool ruby brew)" 'brew Ruby package mapping' || return 1
+	assert_equal 'ripgrep' "$(system_package_for_tool rg brew)" 'brew ripgrep package mapping' || return 1
+	assert_equal $'brew\nskip' "$global_routes" 'global brew route filtering' || return 1
+	assert_contains 'brew install python' "$MOCK_LOG" 'brew route executes brew install' || return 1
+}
 	assert_equal $'system\nnix\nskip' "$routes" 'global python route filtering' || return 1
 
 	routes="$(available_routes_for_tool rtk)"
@@ -549,19 +587,21 @@ test_dry_run_mode() {
 	prepare_mock_environment dry-run-interactive
 	install_failed_tool_stubs
 	prepare_install_mocks
+	write_mock_command "$MOCK_BIN/brew" 'exit 0'
 	write_mock_command "$MOCK_BIN/nix" \
 		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
 		'if [[ "${1:-}" == "eval" ]]; then exit 0; fi' \
 		'exit 1'
 
-	if output="$(run_helper_with_inputs $'nix\nsystem\nsystem\nofficial\nofficial\nofficial\n' install --dry-run)"; then
+	if output="$(run_helper_with_inputs $'brew\nsystem\nsystem\nofficial\nofficial\nofficial\n' install --dry-run)"; then
 		helper_status=0
 	else
 		helper_status="$?"
 	fi
 	assert_equal '0' "$helper_status" 'interactive dry-run succeeds' || return 1
-	assert_contains 'python     planned   nix: nix profile install nixpkgs#python3' "$MOCK_ROOT/output.log.stdout" 'preview the interactively selected nix route' || return 1
+	assert_contains 'python     planned   brew: brew install python' "$MOCK_ROOT/output.log.stdout" 'preview the interactively selected brew route' || return 1
 	assert_not_contains 'install python latest' "$MOCK_LOG" 'interactive dry-run does not execute manager commands' || return 1
+	assert_not_contains 'brew install' "$MOCK_LOG" 'interactive dry-run does not execute brew commands' || return 1
 }
 
 test_dry_run_planned_commands() {
@@ -571,6 +611,7 @@ test_dry_run_planned_commands() {
 	prepare_mock_environment dry-run-planned-commands
 	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
 	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
+	write_mock_command "$MOCK_BIN/brew" 'printf "brew %s\\n" "$*" >> "$MOCK_LOG"'
 	write_mock_command "$MOCK_BIN/nix" 'exit 0'
 	write_mock_command "$MOCK_BIN/proto" 'exit 0'
 	write_mock_command "$MOCK_BIN/mise" \
@@ -591,6 +632,7 @@ test_dry_run_planned_commands() {
 	assert_equal 'proto install python latest --yes' "$(planned_install_command_for_route python proto)" 'preview proto command' || return 1
 	assert_equal 'mise install python@latest' "$(planned_install_command_for_route python mise)" 'preview mise command' || return 1
 	assert_equal 'asdf install ripgrep latest' "$(planned_install_command_for_route rg asdf)" 'preview asdf alias command' || return 1
+	assert_equal 'brew install python' "$(planned_install_command_for_route python brew)" 'preview brew command' || return 1
 	official_command="$(planned_install_command_for_route rtk official)"
 	assert_contains 'rtk-ai/rtk' <(printf '%s\n' "$official_command") 'preview official installer URL' || return 1
 	assert_equal 'uv tool install -p 3.13 serena-agent' "$(planned_install_command_for_route serena uv-tool)" 'preview uv-tool command' || return 1
@@ -778,6 +820,7 @@ PATH="$ORIGINAL_PATH"
 export PATH
 
 run_test 'route filtering' test_route_filtering
+run_test 'explicit brew route' test_brew_route_is_explicit
 run_test 'manager capability probes' test_manager_capability_probes
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
 run_test 'AGENTS.md managed block' test_agents_block_is_add_only_and_idempotent
