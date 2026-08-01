@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# ---
+# Foundation State
+
 TOOL_NAMES=(python ruby rg rtk codegraph uv serena)
 
 declare -A TOOL_COMMANDS=(
@@ -35,6 +38,9 @@ RTK_INSTALLER_URL="https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/maste
 CODEGRAPH_INSTALLER_URL="https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh"
 UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 
+# ---
+# Foundation Help
+
 print_usage() {
 	cat <<'USAGE'
 Usage:
@@ -50,6 +56,9 @@ Environment:
 	DEV_TOOLS_AGENTS_PATH  Override the AGENTS.md path for this run.
 USAGE
 }
+
+# ---
+# Foundation Log
 
 log_info() {
 	printf '[INFO] %s\n' "$1"
@@ -123,6 +132,9 @@ record_pipeline_operation() {
 	LAST_OPERATION_COMMAND="$1"
 	log_debug "Running: $LAST_OPERATION_COMMAND"
 }
+
+# ---
+# Foundation Path and Detection
 
 prepend_path() {
 	local path_entry="$1"
@@ -210,6 +222,9 @@ find_tool_command() {
 
 	return 1
 }
+
+# ---
+# Domains Installation Routes
 
 system_manager_can_run() {
 	if [[ "$EUID" -eq 0 ]]; then
@@ -592,6 +607,9 @@ prompt_for_route() {
 	printf '%s' "$selected_route"
 }
 
+# ---
+# Actions Install
+
 run_as_root() {
 	local -a command=("$@")
 
@@ -764,6 +782,9 @@ install_with_route() {
 	esac
 }
 
+# ---
+# Actions Init
+
 run_project_initialization() {
 	local tool_name="$1"
 	local command_name="$2"
@@ -785,6 +806,9 @@ run_project_initialization() {
 			;;
 	esac
 }
+
+# ---
+# Actions Tool Processing
 
 set_tool_result() {
 	local tool_name="$1"
@@ -925,6 +949,9 @@ process_tool() {
 	esac
 }
 
+# ---
+# Utils AGENTS.md
+
 agents_contains_tool() {
 	local tool_name="$1"
 	local pattern=""
@@ -1043,6 +1070,9 @@ update_agents_managed_block() {
 	log_success "Updated the managed development-tools block in $AGENTS_PATH"
 }
 
+# ---
+# Utils Summary
+
 print_summary_rows() {
 	local tool_name=""
 	local result_name=""
@@ -1064,6 +1094,9 @@ print_status_summary() {
 	printf '\n%s\n' 'Development-tool status:'
 	print_summary_rows
 }
+
+# ---
+# Foundation Main
 
 parse_args() {
 	local mode_seen=0
