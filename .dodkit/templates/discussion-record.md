@@ -12,6 +12,10 @@
 - Keep each entry as short as the discussion allows.
 - Evidence and detailed promotion metadata are optional; omit them when the entry stays clear without them.
 
+Record boundary guidance:
+- Keep one record focused on one cohesive decision theme. If an independent question, component, or follow-up appears, start a new record with a new `discussion-id` instead of extending unrelated history. Mention the prior record in `Evidence / references` when the new discussion continues from it.
+- Use a practical reviewability signal: when a record reaches roughly 10 entries or 1,000 words, close it at a natural boundary and continue in a new record with a new `discussion-id`. This is a heuristic, not a hard parser-enforced limit; stay in the current record only when the next same-theme entry remains concise and reviewable.
+
 Append rules:
 - Append at EOF only; do not edit earlier sections.
 - Do not add status tracking or remaining-work items.

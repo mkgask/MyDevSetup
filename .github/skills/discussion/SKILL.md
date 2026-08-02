@@ -25,13 +25,15 @@ Its job is to build an intentionally broad but bounded view of the current decis
    Survey the affected landscape widely enough to identify relevant domains, adjacent concerns, likely interfaces, existing constraints, and obvious omission risks. This scan should be broad enough to avoid premature tunnel vision, but bounded by the current objective and requested scope.
 3. Select the focus areas for deeper discussion.
    Narrow from the broad scan to the specific domains, files, behaviors, or decision objects that most likely control the current choice. Make explicit what is in focus, what is intentionally out of scope for now, and what remains uncertain.
-4. Update the discussion record.
+4. Check the record boundary before updating it.
+   Keep one record focused on one cohesive decision theme. If an independent question, component, or follow-up appears, start a new record with a new `discussion-id` and reference the prior record instead of extending unrelated history. When the current record reaches roughly 10 entries or 1,000 words, prefer closing it at a natural boundary and continuing in a new record; treat this as a reviewability heuristic rather than a hard limit.
+5. Update the discussion record.
    If `records/{discussion-id}.md` does not exist, create it from `.dodkit/templates/discussion-record.md`. Otherwise append at EOF only.
-5. Record the current state concisely.
+6. Record the current state concisely.
    Capture why the discussion is happening now, the broad-scan findings that materially constrain the choice, the selected focus areas, the current conclusion, and whether promotion is still pending.
-6. Make the next validation target explicit.
+7. Make the next validation target explicit.
    State what discussion-validation needs to confirm or reject before any conclusion becomes binding, including any adjacent concerns that must not be forgotten.
-7. Stop at the discussion boundary.
+8. Stop at the discussion boundary.
    Do not promote decisions in this skill. Hand off a candidate direction to discussion-validation.
 
 ## Guardrails
@@ -40,6 +42,7 @@ Its job is to build an intentionally broad but bounded view of the current decis
 - Keep the active decision set lightweight: record history here, promote only binding constraints later.
 - Start broad enough to surface affected domains and omission risks, then narrow deliberately instead of defaulting to implementation-style locality.
 - Keep the broad scan bounded by the current objective and requested scope; do not drift into open-ended repository mapping.
+- Do not extend a record across independent themes or keep appending after it becomes difficult to review; start a new discussion ID at a natural boundary.
 - Keep records append-only and free of mutable tracking fields.
 
 ## Completion Criteria
@@ -47,5 +50,6 @@ Its job is to build an intentionally broad but bounded view of the current decis
 - The affected landscape has been scanned broadly enough to justify the chosen focus areas.
 - The current conclusion is explicit enough to validate.
 - Focus areas, explicit exclusions, and major uncertainties are visible in the record.
+- The record boundary was checked, and any needed split uses a new discussion ID with a reference to the prior record.
 - The next validation question is clear.
 - No binding rule remains only in chat.
