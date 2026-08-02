@@ -58,6 +58,7 @@ test_apt_commands() {
 	local mock_log="$mock_root/commands.log"
 	local output_file="$mock_root/output.log"
 	local error_output="$mock_root/error.log"
+	local help_output="$mock_root/help.log"
 	local update_line=""
 	local install_line=""
 
@@ -73,6 +74,15 @@ test_apt_commands() {
 		expected_prefix='sudo apt-get'
 	fi
 
+	if ! env NO_COLOR=1 PATH="$mock_bin:/usr/bin:/bin" "$FIRST_SETUP_PATH" --help > "$help_output" 2>&1; then
+		cat "$help_output" >&2
+		return 1
+	fi
+
+	assert_contains 'Install the apt packages required by the development tools.' "$help_output" 'describe generic development tool dependencies' || return 1
+	assert_not_contains 'proto' "$help_output" 'do not name proto in first-setup help' || return 1
+	assert_not_contains 'Ruby' "$help_output" 'do not name Ruby in first-setup help' || return 1
+
 	if ! env NO_COLOR=1 PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
 		cat "$output_file" >&2
 		return 1
@@ -81,10 +91,13 @@ test_apt_commands() {
 	update_line="$(awk -v expected="$expected_prefix update" '$0 == expected { print NR; exit }' "$mock_log")"
 	install_line="$(awk -v expected="$expected_prefix install -y" '$0 ~ ("^" expected " ") { print NR; exit }' "$mock_log")"
 
-	assert_contains "$expected_install" "$mock_log" 'install all proto Ruby build dependencies' || return 1
+	assert_contains "$expected_install" "$mock_log" 'install all development tool dependencies' || return 1
 	assert_not_contains 'proto ' "$mock_log" 'do not invoke proto during first setup' || return 1
 	assert_contains '[INFO] Updating apt package index' "$output_file" 'use the shared info label' || return 1
-	assert_contains '[✅️SUCCESS] Proto Ruby build dependencies are installed' "$output_file" 'use the shared success label' || return 1
+	assert_contains '[INFO] Installing development tool dependencies' "$output_file" 'describe generic dependency installation' || return 1
+	assert_contains '[✅️SUCCESS] Development tool dependencies are installed' "$output_file" 'use the generic success label' || return 1
+	assert_not_contains 'proto' "$output_file" 'do not name proto in first-setup output' || return 1
+	assert_not_contains 'Ruby' "$output_file" 'do not name Ruby in first-setup output' || return 1
 	assert_not_contains $'\033[' "$output_file" 'do not color output when NO_COLOR is set' || return 1
 	if [[ -z "$update_line" || -z "$install_line" || "$update_line" -ge "$install_line" ]]; then
 		fail_test 'update apt package index before installing first-setup dependencies'

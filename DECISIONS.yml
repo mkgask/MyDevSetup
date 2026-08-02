@@ -409,14 +409,16 @@ decisions:
   first-setup:
     - id: installer-011-22-first-setup-dependencies
       decision: >
-        templates/first-setup.sh は Linux/WSL の apt-get 環境で、proto の Ruby source build に必要な
+        templates/first-setup.sh は Linux/WSL の apt-get 環境で、開発ツールの導入・ビルド・実行準備に必要な
         `patch`、`libdb-dev`、`build-essential`、`libyaml-dev`、`libssl-dev`、`libreadline6-dev`、`libffi-dev`、
         `autoconf`、`libgdbm-dev`、`zlib1g-dev`、`rustc`、`libncurses5-dev`、`libgdbm6`、`libgmp-dev`、
-        `curl`、`git`、`gh`、`unzip`、`gzip`、`xz-utils` を、
-        `apt-get update` の後に `apt-get install -y` で導入する。実行ユーザーがrootでない場合だけ apt-get に sudo を付け、proto、Ruby、shell起動ファイル、PATH、manager設定は変更しない。
+        `curl`、`git`、`gh`、`unzip`、`gzip`、`xz-utils` を明示的な依存パッケージ集合として管理し、
+        将来ほかの開発ツールに必要なパッケージもこの集合へ追加する。導入は `apt-get update` の後に
+        `apt-get install -y` で行う。実行ユーザーがrootでない場合だけ apt-get に sudo を付け、
+        開発ツール自体、shell起動ファイル、PATH、manager設定は変更しない。usage/info/success では個別ツール名を表示しない。
         apt-get が利用できない、または非root環境でsudoが利用できない場合は明示的なエラーで終了し、他のpackage managerへフォールバックしない。
         first-setup.sh は templates/dev-tools.sh の隣に置く手動実行用テンプレートとし、対応するfocused testは tests/first-setup.test.sh に置く。
         初期スコープでは install.sh の配布アセットへ追加しない。first-setup.sh の log_info、log_error、log_success は install.sh と templates/dev-tools.sh のラベル、絵文字、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けに従う。
       status: "✅️Implementation Approved"
-      link: "records/dev-tools-001-optional-tool-installation.md"
+      link: "records/first-setup-001-generic-dependencies.md"
       sub_decisions: []

@@ -59,8 +59,8 @@ Usage:
 	first-setup.sh [--help]
 
 Description:
-	Install the apt packages required by proto's Ruby source build.
-	This script does not install proto or Ruby.
+	Install the apt packages required by the development tools.
+	This script does not install development tools.
 USAGE
 }
 
@@ -94,7 +94,7 @@ fi
 log_info 'Updating apt package index'
 "${APT_COMMAND[@]}" update
 
-log_info 'Installing proto Ruby build dependencies'
+log_info 'Installing development tool dependencies'
 "${APT_COMMAND[@]}" install -y "${APT_PACKAGES[@]}"
 
-log_success 'Proto Ruby build dependencies are installed'
+log_success 'Development tool dependencies are installed'
