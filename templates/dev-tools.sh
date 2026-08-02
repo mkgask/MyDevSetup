@@ -615,12 +615,12 @@ append_available_route() {
 available_routes_for_tool() {
 	local tool_name="$1"
 
-	append_available_route "$tool_name" system
 	append_available_route "$tool_name" nix
 	append_available_route "$tool_name" proto
 	append_available_route "$tool_name" mise
 	append_available_route "$tool_name" asdf
 	append_available_route "$tool_name" brew
+	append_available_route "$tool_name" system
 	append_available_route "$tool_name" official
 	append_available_route "$tool_name" uv-tool
 
@@ -655,6 +655,16 @@ has_install_route() {
 	done < <(available_routes_for_tool "$tool_name")
 
 	return 1
+}
+
+report_no_install_route() {
+	local tool_name="$1"
+
+	if [[ "$tool_name" == "serena" ]]; then
+		log_info "Serena is installed via uv; skipping because uv is unavailable"
+	else
+		log_warning "No installation method is available for $tool_name; skipping"
+	fi
 }
 
 default_available_route_for_tool() {
@@ -705,6 +715,7 @@ prompt_for_route() {
 		prompt_output="/dev/stdout"
 	fi
 
+	printf 'Choose an installation method for %s [default: %s]:\n' "$tool_name" "$default_route" > "$prompt_output"
 	for index in "${!routes[@]}"; do
 		route_name="${routes[$index]}"
 		if [[ "$route_name" == "$default_route" ]]; then
@@ -715,7 +726,7 @@ prompt_for_route() {
 	done
 
 	route_count="${#routes[@]}"
-	printf 'Choose an installation method for %s [default: %s]: ' "$tool_name" "$default_route" > "$prompt_output"
+	printf 'Selection: ' > "$prompt_output"
 	read -r answer < "$prompt_input" || answer=""
 
 	if [[ -z "$answer" ]]; then
@@ -1046,7 +1057,7 @@ process_dry_run_tool() {
 
 	if ! has_install_route "$tool_name"; then
 		set_tool_result "$tool_name" skipped "no available installation method"
-		log_warning "No installation method is available for $tool_name; skipping"
+		report_no_install_route "$tool_name"
 		return 0
 	fi
 
@@ -1057,7 +1068,7 @@ process_dry_run_tool() {
 	fi
 
 	if [[ "$selected_route" == "skip" || -z "$selected_route" ]]; then
-		set_tool_result "$tool_name" skipped "dry-run selected skip"
+		set_tool_result "$tool_name" skipped "selected skip"
 		return 0
 	fi
 
@@ -1093,7 +1104,7 @@ process_install_tool() {
 
 	if ! has_install_route "$tool_name"; then
 		set_tool_result "$tool_name" skipped "no available installation method"
-		log_warning "No installation method is available for $tool_name; skipping"
+		report_no_install_route "$tool_name"
 		return 0
 	fi
 
@@ -1105,7 +1116,7 @@ process_install_tool() {
 
 	selected_route="$(prompt_for_route "$tool_name")"
 	if [[ "$selected_route" == "skip" ]]; then
-		set_tool_result "$tool_name" skipped "user selected skip"
+		set_tool_result "$tool_name" skipped "selected skip"
 		return 0
 	fi
 

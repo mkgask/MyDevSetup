@@ -291,8 +291,8 @@ decisions:
             各ツールの選択肢にはmanager-specific capability probeまたは現行の明示的なmappingで利用可能と判定された導入方法だけを表示し、常に skip を含める。
             identifier mappingはmanager側の名前へ変換するためのalias normalizationだけを担い、mapping自体で未確認の対応可否を作らない。
             未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。asdfはremote plugin一覧だけでは候補にしない。
-            routeの候補順は system、nix、proto、mise、asdf、brew、official、uv-tool、skip とする。system は Python・Ruby・rg の既存標準経路を既定とし、brewは独立routeとして
-            Python・Ruby・rgだけを既存の明示的なmappingで扱う。rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
+            routeの候補順は nix、proto、mise、asdf、brew、system、official、uv-tool、skip とする。候補順は表示と数値選択の順序を定めるが、空入力時のツール別既定導入方法は変更しない。
+            system は Python・Ruby・rg の既存標準経路を既定とし、brewは独立routeとして Python・Ruby・rgだけを既存の明示的なmappingで扱う。rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
             Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示する。
             選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。
           status: "✅️Implementation Approved"
@@ -397,7 +397,7 @@ decisions:
 
         - id: installer-011-21-dry-run-preview
           decision: >
-            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序（system、nix、proto、mise、asdf、brew、official、uv-tool、skip）、
+            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序（nix、proto、mise、asdf、brew、system、official、uv-tool、skip）、
             `--global`候補制限、interactive時の一回のroute選択だけを行い、実際の導入を開始しない読み取りpreviewとする。
             既存ツールは `present` として再導入せず、不足ツールは選択またはTTYなし時のconfigured default routeを `planned` として表示する。利用可能な導入経路がない、または `skip` が選ばれた対象は `skip` と表示する。
             各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。official routeは対象ツールの既存installer URL mappingを根拠にplanned commandを表示し、curlの現在の実行可能性はpreview候補の条件にしない。system package manager、nix、proto、mise、asdf、brew、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。

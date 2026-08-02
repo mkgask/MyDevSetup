@@ -559,3 +559,98 @@ Append rules:
 - Executable validation: Helper 15 tests, installer 15 tests, Bash syntax checks, editor diagnostics, and live no-`curl` dry-run verification all pass. The live preview returns 0 and shows URL-backed official plans for `rtk`, `codegraph`, and `uv`.
 - Decision-record hygiene: The active contracts now state the URL-mapping-only official preview rule, while the record retains the rationale and validation evidence. No new binding constraint remains.
 - Closeout result: PASS. Automatically installing `curl` or adding a transport fallback remains out of scope.
+
+### Entry 0056 (2026-08-02T00:00:17Z)
+- Why now: Interactive `install --dry-run` currently prints each route list before the question that asks which route to choose, so the tool and the question are visually separated. When `uv` is planned but not installed during the preview, Serena is reported with a generic no-installation-method warning even though its fixed dependency route is `uv-tool`.
+- Findings / trade-offs:
+  - `prompt_for_route` owns the display order. It can print the question heading first, then the route choices, and finally a short selection prompt without changing route ordering, default selection, or one-prompt-per-tool behavior.
+  - Serena must continue to use `uv tool install -p 3.13 serena-agent` only when `uv` is available; a dry-run must not pretend that a planned `uv` route has already installed or activated `uv`.
+  - The no-route branch can use an informational dependency message for Serena while retaining the existing `skipped` result and non-zero behavior for actual install failures. Other tools keep the generic warning.
+- Focus areas: interactive prompt readability, Serena's uv dependency message in dry-run and normal install, existing route order/defaults, and focused output assertions.
+- Explicit exclusions: no route reorder, no implicit uv installation, no new Serena route, no change to dry-run result semantics, and no changes to `install.sh` distribution.
+- Current conclusion: Show the route-selection question before its choices and finish with `Selection:` for input. When Serena has no currently available route, report that Serena is installed via uv and is skipped until uv is available, using an informational message rather than the generic warning.
+- Next validation target: discussion-validation should confirm that the prompt remains one selection per missing tool, that the route list and default remain unchanged, and that Serena's message preserves the uv-only dependency and existing skipped result.
+- Promotion to DECISIONS.yml: pending (`installer-011-1-tool-order-and-prompt`, `installer-011-2-installation-backends`, and `installer-011-8-install-method-selection` may only need wording clarification if the validation finds a binding contract change).
+
+### Entry 0057 (2026-08-02T00:00:18Z)
+- Discussion-validation: The bounded scan covered `prompt_for_route`, route availability/default selection, install and dry-run processing, the existing focused prompt tests, and the active uv/Serena decisions. It found no need to change route order, capability probes, dependency sequencing, or dry-run side-effect boundaries.
+- Focus validation: Moving the question heading before the route list and adding a final `Selection:` input line preserves the existing one-read interaction and makes the tool being configured visible before its choices. The route list, numbering, default route, and string/number selection behavior remain unchanged.
+- Directional fit: Replacing only Serena's generic no-route warning with an informational uv dependency message directly addresses the confusing output while preserving the fact that Serena cannot be installed until `uv` is available. The actual `uv-tool` route and `skipped` result remain unchanged.
+- Contract fit: The candidate preserves `installer-011-1`'s tool order and one prompt per missing tool, `installer-011-2`/`installer-011-8`'s uv-only Serena route, `installer-011-5`'s dry-run and failure behavior, and `installer-011-13`'s user-facing log levels.
+- Hidden bindings: None. This is a presentation and diagnostic-message refinement over existing contracts, not a new route or dependency behavior.
+- Validation result: PASS. Existing decisions are sufficient; implementation can proceed without changing `DECISIONS.yml`.
+- Promotion targets: none; apply the helper and focused test changes, then record implementation and closeout results.
+
+### Entry 0058 (2026-08-02T00:00:19Z)
+- Implementation result: `prompt_for_route` now emits the tool-specific question first, then the unchanged route list, and finally `Selection:` before the existing single input read. The configured default, route order, numeric/string parsing, `/dev/tty` fallback, and one-prompt-per-missing-tool behavior are unchanged.
+- Serena result: Both dry-run and install no-route branches retain the `skipped` result and now use an informational message stating that Serena is installed via uv and is skipped because uv is unavailable. Serena remains available only through the existing `uv-tool` route.
+- Test result: The helper tests assert question-before-options ordering, the final selection label, and the Serena uv dependency message.
+- Implementation scope: Only `templates/dev-tools.sh` and `tests/dev-tools.test.sh` changed for this request; `install.sh`, README content, route semantics, and distribution behavior were not changed.
+
+### Entry 0059 (2026-08-02T00:00:20Z)
+- Implementation-validation: The changed helper behavior matches `installer-011-1`'s tool order and one-prompt contract, `installer-011-2`'s uv-only Serena route, the existing dry-run boundary, and the user-facing log-level contract. No terminology drift or new binding constraint was found.
+- Executable validation: `bash tests/dev-tools.test.sh` passes all 15 focused helper tests; `bash tests/install.test.sh` passes all 15 installer tests; Bash syntax checks, editor diagnostics, and `git diff --check` pass.
+- Decision-record hygiene: The applicable decisions remain `✅️Implementation Approved`, their link still points to this record, and no decision promotion is required because the implementation changes presentation and diagnostics without changing an active constraint.
+- Closeout result: PASS. The remaining limitation is unchanged: Serena is skipped when uv is unavailable in the current execution; no implicit uv installation was added.
+
+### Entry 0060 (2026-08-02T00:00:21Z)
+- Why now: The user requested that installation methods be displayed in the preference order `nix`, `proto`, `mise`, `asdf`, `brew`, `system`, `official`, `skip`. The active helper currently emits `system` first, which makes the system route appear preferred over manager-backed routes.
+- Active baseline: The relevant contracts are `installer-011-1-tool-order-and-prompt`, `installer-011-2-installation-backends`, `installer-011-8-install-method-selection`, and `installer-011-21-dry-run-preview`, all currently `✅️Implementation Approved`. `available_routes_for_tool` owns candidate order, while `default_route_for_tool` separately owns the configured blank-input default.
+- Broad-scan findings:
+  - The route order is shared by normal install and dry-run, so one change to `available_routes_for_tool` updates both interactive displays and numeric selection indexes.
+  - `system` is now separate from `brew`; moving the route in the shared list must not reintroduce brew as a system-manager alias or change the existing package mapping.
+  - `uv-tool` is a dependency-specific route for Serena and is not part of the user's general manager sequence. It must remain available before `skip` when `uv` is executable, otherwise Serena's existing installation contract would be lost.
+  - Configured defaults are intentionally separate from display order. Keeping them fixed preserves the established blank-input behavior while changing the visible route preference order requested by the user.
+- Focus areas: shared route candidate order, normal and dry-run prompt numbering, preservation of configured defaults, Serena's `uv-tool` placement, and regression assertions for manager filtering and planned command selection.
+- Explicit exclusions: no change to route availability probes, package mappings, `--global` scope, manager installation policy, official installer URLs, Serena dependency semantics, or top-level `install.sh` distribution.
+- Current conclusion: Change the shared candidate order to `nix`, `proto`, `mise`, `asdf`, `brew`, `system`, `official`, `uv-tool`, `skip`. Keep per-tool configured defaults unchanged; the requested ordering controls display and numeric selection, not blank-input fallback.
+- Next validation target: discussion-validation should confirm that the new order is reflected in normal and dry-run candidates, that `system` and `brew` remain distinct, that `uv-tool` remains Serena-only, and that configured defaults and global filtering remain unchanged.
+- Promotion to DECISIONS.yml: pending (`installer-011-8-install-method-selection` and `installer-011-21-dry-run-preview` should be updated with the shared route order and preserved configured-default rule).
+
+### Entry 0061 (2026-08-02T00:00:22Z)
+- Discussion-validation: The bounded scan covered the shared route candidate generator, route-specific availability and install dispatch, dry-run planned-command reuse, default-route selection, brew/system separation, Serena's uv dependency, global filtering, and the existing focused tests. This covers the main omission risk: changing only visible text while leaving numeric selection or dry-run order inconsistent.
+- Focus validation: The narrowed focus on the shared candidate list and the separate configured-default function is justified because both normal prompts and dry-run reuse the candidate list, while blank input is resolved independently. Keeping `uv-tool` as a specialized entry before `skip` preserves its existing dependency contract without changing the requested general manager sequence.
+- Directional fit: The candidate order `nix`, `proto`, `mise`, `asdf`, `brew`, `system`, `official`, `uv-tool`, `skip` directly serves the user's requested display preference. Preserving configured defaults avoids an unrelated change to blank-input behavior.
+- Contract fit: Capability probes, alias normalization, manager/plugin non-installation, global route filtering, dry-run side-effect boundaries, one prompt per missing tool, and official/uv-tool semantics remain unchanged. The route order is the only binding behavior being revised.
+- Hidden bindings: The same order must be represented in `available_routes_for_tool`, the dry-run decision contract, and focused route-order assertions. No new decision object is needed; the existing route-selection and dry-run decisions are the correct owners.
+- Validation result: PASS. The candidate direction fits the original request and active invariants, and the focused implementation/test surface is clear.
+- Promotion targets: Update `installer-011-8-install-method-selection` and `installer-011-21-dry-run-preview` with the shared route order and explicit preservation of per-tool configured defaults. Set both to `⚠️Implementing` before the helper/test change.
+
+### Entry 0062 (2026-08-02T00:00:23Z)
+- Implementation result: `available_routes_for_tool` now emits routes in the promoted order `nix`, `proto`, `mise`, `asdf`, `brew`, `system`, `official`, `uv-tool`, `skip`. The same shared list drives normal install prompts, numeric selection, and dry-run previews.
+- Compatibility result: Per-tool configured defaults remain unchanged: `system` for Python/Ruby/rg, `official` for RTK/CodeGraph/uv, and `uv-tool` for Serena. `brew` remains a separate route from `system`, and the Serena route remains gated by executable `uv`.
+- Test result: The helper suite passes all 15 focused tests, including route filtering, global filtering, preserved defaults, and dry-run prompt ordering. The installer suite passes all 15 tests. Bash syntax, editor diagnostics, and `git diff --check` also pass.
+- Implementation scope: Only `templates/dev-tools.sh` and `tests/dev-tools.test.sh` changed for the implementation. `install.sh`, route probes, install commands, and distribution behavior were not changed.
+
+### Entry 0063 (2026-08-02T00:00:24Z)
+- Implementation-validation: The shared route order is aligned across the helper implementation, normal prompt behavior, dry-run behavior, and the two active decision contracts. The requested general sequence is visible while the specialized `uv-tool` route remains before `skip` for Serena.
+- Artifact alignment: Focused assertions cover the new manager order, `--global` filtering order, default-route preservation, and the first displayed dry-run option. Existing tests continue to cover brew/system separation, planned command generation, and helper distribution.
+- Terminology and record hygiene: `DECISIONS.yml` and this record use the same route names and order. No new binding constraint was discovered, and no implementation rule remains only in the record.
+- Validation result: PASS. The two promoted decisions can return to `✅️Implementation Approved`; live third-party installation was not performed because this change only controls display and selection order.
+
+### Entry 0064 (2026-08-02T00:00:25Z)
+- Why now: The dry-run summary currently reports a user-selected skip as `dry-run selected skip`, while normal install reports the equivalent choice as `user selected skip`. The user requested the common `selected skip` wording because the mode distinction is not useful in this result detail.
+- Findings / trade-offs: Both branches represent the same explicit route selection and already use the `skipped` result state. The dry-run contract requires skipped selections to be displayed but does not require mode-specific detail text. This is a presentation-only change; route selection, installation, side-effect boundaries, and exit status remain unchanged.
+- Focus areas: Normalize the selected-skip result detail in `process_dry_run_tool` and `process_install_tool`, then add a focused assertion that dry-run output uses the common wording.
+- Explicit exclusions: No change to non-interactive skip wording, no-route diagnostics, route order, default selection, dry-run semantics, or installation behavior.
+- Current conclusion: Use exactly `selected skip` as the result detail for an explicit skip in both normal install and dry-run.
+- Next validation target: discussion-validation should confirm that the wording change stays within the existing skip-result contract and does not conflate explicit selection with non-interactive or unavailable-route skips.
+- Promotion to DECISIONS.yml: none; this is a user-facing wording refinement within the existing decision contract.
+
+### Entry 0065 (2026-08-02T00:00:26Z)
+- Discussion-validation: The bounded scan covered both explicit-skip branches, the no-route and non-interactive skip branches, dry-run summary rendering, focused test fixtures, and the active failure/non-interactive and dry-run decisions. It distinguishes explicit selection from other skip reasons, so the proposed wording does not erase meaningful diagnostics.
+- Directional fit: Reusing `selected skip` for explicit choices directly matches the user's requested output while preserving the existing `skipped` result state and all mode behavior.
+- Contract fit: No-route messages, non-interactive skip behavior, route selection, dry-run side-effect boundaries, and exit-status rules remain unchanged. No new binding rule is needed.
+- Validation result: PASS. The helper and focused test can be updated without decision promotion.
+- Promotion to DECISIONS.yml: none.
+
+### Entry 0066 (2026-08-02T00:00:27Z)
+- Implementation result: Explicit skip selections now use the common result detail `selected skip` in both `process_install_tool` and `process_dry_run_tool`. Non-interactive skips and unavailable-route diagnostics retain their existing details and messages.
+- Test result: The helper tests now assert `selected skip` for both normal install and interactive dry-run. The focused helper suite passes all 15 tests.
+- Implementation scope: Only `templates/dev-tools.sh` and `tests/dev-tools.test.sh` changed for this wording refinement; route behavior, installation, and distribution contracts were not changed.
+
+### Entry 0067 (2026-08-02T00:00:28Z)
+- Implementation-validation: Explicit skip output is aligned across normal install and dry-run without conflating it with non-interactive or unavailable-route skips. The existing `skipped` result state and summary format remain unchanged.
+- Artifact alignment: Focused assertions cover both execution modes, while the active dry-run and failure/non-interactive decisions remain sufficient and approved.
+- Terminology and record hygiene: The user-facing phrase is consistently `selected skip`; no decision promotion or status change is required.
+- Validation result: PASS. Remaining risk is limited to the existing untested live third-party installation paths, which this presentation-only change does not affect.

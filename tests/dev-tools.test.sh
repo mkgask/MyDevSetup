@@ -169,6 +169,7 @@ test_route_filtering() {
 
 	prepare_mock_environment route-filtering
 	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
+	write_mock_command "$MOCK_BIN/brew" 'exit 0'
 	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
 	write_mock_command "$MOCK_BIN/nix" \
 		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
@@ -185,10 +186,10 @@ test_route_filtering() {
 	source "$HELPER_PATH"
 
 	routes="$(available_routes_for_tool python)"
-	assert_equal $'system\nnix\nproto\nmise\nasdf\nskip' "$routes" 'python route filtering' || return 1
+	assert_equal $'nix\nproto\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'python route filtering' || return 1
 
 	routes="$(available_routes_for_tool rg)"
-	assert_equal $'system\nnix\nmise\nasdf\nskip' "$routes" 'rg route filtering' || return 1
+	assert_equal $'nix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'rg route filtering' || return 1
 
 	routes="$(available_routes_for_tool rtk)"
 	assert_equal $'mise\nasdf\nofficial\nskip' "$routes" 'rtk route filtering' || return 1
@@ -247,7 +248,7 @@ test_brew_route_is_explicit() {
 	assert_equal $'brew\nskip' "$global_routes" 'global brew route filtering' || return 1
 	assert_contains 'brew install python' "$MOCK_LOG" 'brew route executes brew install' || return 1
 }
-	assert_equal $'system\nnix\nskip' "$routes" 'global python route filtering' || return 1
+	assert_equal $'nix\nbrew\nsystem\nskip' "$routes" 'global python route filtering' || return 1
 
 	routes="$(available_routes_for_tool rtk)"
 	assert_equal $'official\nskip' "$routes" 'global rtk route filtering' || return 1
@@ -256,6 +257,8 @@ test_brew_route_is_explicit() {
 	assert_equal $'uv-tool\nskip' "$routes" 'global Serena route filtering' || return 1
 	GLOBAL_INSTALL=0
 
+	assert_equal 'system' "$(default_available_route_for_tool python)" 'python keeps the configured system default' || return 1
+	assert_equal 'official' "$(default_available_route_for_tool rtk)" 'RTK keeps the configured official default' || return 1
 	assert_equal 'python' "$(system_package_for_tool python brew)" 'Homebrew Python package' || return 1
 
 	write_mock_command "$MOCK_BIN/proto" \
@@ -562,6 +565,9 @@ test_dry_run_mode() {
 	local output=""
 	local helper_status=0
 	local agents_snapshot=""
+	local prompt_line=0
+	local option_line=0
+	local selection_line=0
 
 	prepare_mock_environment dry-run
 	install_failed_tool_stubs
@@ -580,6 +586,7 @@ test_dry_run_mode() {
 	grep -Eq '^  rtk[[:space:]]+planned[[:space:]]+official: .*rtk' "$MOCK_ROOT/output.log" || fail_test 'preview the default official route for RTK' || return 1
 	grep -Eq '^  uv[[:space:]]+planned[[:space:]]+official: .*uv/install.sh' "$MOCK_ROOT/output.log" || fail_test 'preview the default official route for uv' || return 1
 	grep -Eq '^  serena[[:space:]]+skipped[[:space:]]+' "$MOCK_ROOT/output.log" || fail_test 'skip Serena without an available uv route' || return 1
+	assert_contains 'Serena is installed via uv; skipping because uv is unavailable' "$MOCK_ROOT/output.log" 'explain Serena uv dependency when uv is unavailable' || return 1
 	assert_not_contains 'Choose an installation method' "$MOCK_ROOT/output.log" 'non-interactive dry-run does not prompt' || return 1
 	assert_not_contains 'install' "$MOCK_LOG" 'dry-run does not execute installation commands' || return 1
 	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'dry-run changed AGENTS.md' || return 1
@@ -593,12 +600,20 @@ test_dry_run_mode() {
 		'if [[ "${1:-}" == "eval" ]]; then exit 0; fi' \
 		'exit 1'
 
-	if output="$(run_helper_with_inputs $'brew\nsystem\nsystem\nofficial\nofficial\nofficial\n' install --dry-run)"; then
+	if output="$(run_helper_with_inputs $'brew\nsystem\nsystem\nofficial\nskip\nofficial\n' install --dry-run)"; then
 		helper_status=0
 	else
 		helper_status="$?"
 	fi
 	assert_equal '0' "$helper_status" 'interactive dry-run succeeds' || return 1
+	assert_contains 'codegraph  skipped   selected skip' "$MOCK_ROOT/output.log.stdout" 'use the common selected-skip detail in dry-run' || return 1
+	prompt_line="$(grep -n -m1 'Choose an installation method for python' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	option_line="$(grep -n -m1 '1) nix' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	selection_line="$(grep -n -m1 'Selection:' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	if [[ -z "$prompt_line" || -z "$option_line" || -z "$selection_line" ]] || ! (( prompt_line < option_line && option_line < selection_line )); then
+		fail_test 'show the installation question before its route choices'
+		return 1
+	fi
 	assert_contains 'python     planned   brew: brew install python' "$MOCK_ROOT/output.log.stdout" 'preview the interactively selected brew route' || return 1
 	assert_not_contains 'install python latest' "$MOCK_LOG" 'interactive dry-run does not execute manager commands' || return 1
 	assert_not_contains 'brew install' "$MOCK_LOG" 'interactive dry-run does not execute brew commands' || return 1
@@ -864,9 +879,9 @@ test_default_route_and_skip_selection() {
 	output="$(run_helper_with_inputs $'\n\nskip\n\nskip\nskip\n')"
 	assert_contains 'python     installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects python default' || return 1
 	assert_contains 'ruby       installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects ruby default' || return 1
-	assert_contains 'rg         skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves rg uninstalled' || return 1
+	assert_contains 'rg         skipped   selected skip' "$MOCK_ROOT/output.log.stdout" 'explicit skip uses the common result detail' || return 1
 	assert_contains 'rtk        installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects rtk default' || return 1
-	assert_contains 'codegraph  skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves codegraph uninstalled' || return 1
+	assert_contains 'codegraph  skipped   selected skip' "$MOCK_ROOT/output.log.stdout" 'explicit skip detail is consistent across tools' || return 1
 	assert_contains 'uv         skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves uv uninstalled' || return 1
 	assert_contains 'serena     skipped' "$MOCK_ROOT/output.log.stdout" 'skip leaves Serena uninstalled' || return 1
 	assert_contains '- `python`: `python3`' "$MOCK_AGENTS" 'record default-installed python' || return 1
