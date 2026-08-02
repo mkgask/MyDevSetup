@@ -558,3 +558,138 @@ Append rules:
 - Current conclusion: implementation-validation の executable、artifact、terminology、decision-record hygiene、scope の確認を満たし、本変更を closeout できる。残存する `printf` は logger 実装または prompt/data output であり、warning の共通化対象ではない。
 - Promotion to DECISIONS.yml: none
 - Evidence / references (optional): `bash tests/install.test.sh`、`bash -n install.sh`、`python3` YAML parse、`git diff --check`、`get_errors`
+
+### Entry 0039 (2026-08-02T00:00:00Z)
+- Why now: ルートに README.md がなく、利用者がこのリポジトリの目的と正規の導入方法を確認できない。ユーザー要望により、自分で作って自分で使うためのリポジトリであることを明記し、一般利用者向けの最小導入案内を追加する。
+- Findings / trade-offs:
+  - 既存の `installer-003-install-sh-distribution` は、対象プロジェクトへ移動した利用者が raw GitHub の `install.sh` を `curl -fsSL ... | bash` で実行する公開導線を定めている。
+  - `install.sh` は実行時の current working directory を導入先として扱い、引数なしでは Copilot を既定ターゲットにする。Cursor は一般利用者向けの引数例として案内できる。
+  - README は自作・自用の性格と一般利用者向けの curl 導線だけを扱い、ローカル checkout、開発・検証手順、内部実装の説明は意図的に含めない。
+- Current conclusion: ルート README.md に、自分で作って自分で使うリポジトリであること、対象プロジェクトのルートで実行すること、Copilot既定の curl 導入コマンド、Cursor指定の任意コマンドだけを最小限記載する。
+- Promotion to DECISIONS.yml: pending（discussion-validation 後）
+- Evidence / references (optional): `DECISIONS.yml` の `installer-003-install-sh-distribution`、`install.sh` の `SOURCE_REPOSITORY`・`SOURCE_REF`・`parse_args`・`main`
+
+### Entry 0040 (2026-08-02T00:00:01Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0039 の README 方針を既存の配布契約と利用者スコープへ照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: ルート構成、README の有無、`install.sh` の raw URL・current working directory・既定ターゲット、`installer-003`、既存 installer tests を確認した。README の追加以外の配布実装変更は不要である。
+  - **Focus justification**: README の目的、導入先、一般利用者向け command、対象ターゲットの案内に絞り、ローカル checkout・開発手順・内部実装・オフライン導入は除外する。
+  - **Directional fit**: 自作・自用のリポジトリであることを明記しつつ、公開利用者が current working directory で raw installer を実行する既存導線をそのまま説明できる。
+  - **Contract fit**: `curl -fsSL ... | bash`、`mkgask/mydevsetup/main`、引数なしの Copilot 既定、Copilot/Cursor 限定を維持し、新しい installer route や CLI semantics を追加しない。
+  - **Hidden bindings**: README に開発者向け手順を載せないことは今回の user-facing documentation scope として明示的に decision 化する。実装上の新規制約はない。
+  - **Validation result**: PASS — 方針は元の配布目的と active constraints に適合し、README の内容だけを実装すればよい。
+- Current conclusion: 既存 `installer-003-install-sh-distribution` に README の対象読者・内容境界を sub-decision として追加し、その後 README.md を作成する。
+- Promotion to DECISIONS.yml: ready -> `installer-003-install-sh-distribution`
+- Evidence / references (optional): `DECISIONS.yml` の `installer-003-*`、`install.sh`、`tests/install.test.sh`
+
+### Entry 0041 (2026-08-02T00:00:02Z)
+- Why now: Gate B（implementation）として、promoted 済みの README scope をルートの user-facing documentation に反映する。
+- Findings / trade-offs:
+  - `README.md` を新規追加し、自作・自用のリポジトリであること、対象プロジェクトのルートで実行すること、既定の Copilot 導入、Cursor 指定の公開 command だけを記載した。
+  - ローカル checkout、開発・検証手順、内部実装、別の導入 transport は追加していない。
+  - `bash tests/install.test.sh` は 15 tests passed、`bash -n install.sh`、README command の文字列確認、`git diff --check` は PASS。
+- Current conclusion: `installer-003-4-readme-scope` に沿う README 実装が完了した。新しい binding constraint は発生していない。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `README.md`、`install.sh`、`bash tests/install.test.sh`
+
+### Entry 0042 (2026-08-02T00:00:03Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、README 実装、active decision、記録、変更範囲の整合を確認する。
+- Findings / trade-offs:
+  - **Executable validation**: `bash tests/install.test.sh` は 15 tests passed、`bash -n install.sh`、README の導入 command 確認、`git diff --check` は PASS。
+  - **Artifact alignment**: `README.md` は自作・自用の目的、対象プロジェクトのルート実行、Copilot既定、Cursor指定だけを含み、`installer-003-4-readme-scope` の非目標を守っている。
+  - **Terminology and contract**: README の URL、`curl -fsSL ... | bash`、`cursor` 引数は `installer-003-1`、`installer-003-2`、`installer-003-3`、`installer-004` と整合している。
+  - **Decision-record hygiene**: `installer-003-install-sh-distribution` の link は `records/installer-001-ai-dev-setup.md` を指し、Entry 0039〜0042 に今回の discussion、validation、implementation、closeout が append-only で記録されている。
+  - **Scope and risk**: `install.sh`、helper、tests の動作は変更していない。README の導入例が実際の公開ブランチに存在することは、今回のローカル検証範囲外として残る運用上のリスクである。
+- Current conclusion: implementation-validation の executable、artifact、terminology、decision-record hygiene、scope の確認を満たし、本変更を closeout できる。`installer-003-install-sh-distribution` と `installer-003-4-readme-scope` を `✅️Implementation Approved` とする。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `README.md`、`DECISIONS.yml`、`bash tests/install.test.sh`、`bash -n install.sh`、`git diff --check`、`get_errors`
+
+### Entry 0043 (2026-08-02T00:01:00Z)
+- Why now: README の導入案内だけでは、配布された `.dev/dev-tools.sh` を利用者がどう呼び出すか確認できない。ユーザー要望により、一般利用者向けの簡単な helper 操作例を README に追加する。
+- Findings / trade-offs:
+  - `templates/dev-tools.sh` の公開 usage は `install`、`init`、`status` であり、`install --dry-run` は導入前の確認用として既存契約に定義されている。
+  - `install` は不足している開発用CLIを導入し、`install --dry-run` は予定 route と command を表示し、`status` は現在のツールと package-manager 状態を検証し、`init` は現在プロジェクト向けの明示的な初期設定を行う。
+  - README には `.dev/dev-tools.sh` の呼び出し例と短い用途説明だけを追加し、helper の内部実装、route詳細、manager導入手順、開発者向けローカル checkout は記載しない。
+- Current conclusion: 既存 README の Install セクションに続けて、対象プロジェクトのルートから実行する `status`、`install --dry-run`、`install`、`init` の最小例を記載する。
+- Promotion to DECISIONS.yml: pending（discussion-validation 後）
+- Evidence / references (optional): `templates/dev-tools.sh` の `print_usage`、`DECISIONS.yml` の `installer-011-15-mode-selection`・`installer-011-20-status-mode`・`installer-011-21-dry-run-preview`
+
+### Entry 0044 (2026-08-02T00:01:01Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0043 の helper usage 方針を README の既存 scope と `dev-tools.sh` の active contract へ照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: README の現行 Install 案内、helper の `print_usage`、mode selection、status、dry-run の decision と配布先 `.dev/dev-tools.sh` を確認した。追加の code path やテスト契約は影響を受けない。
+  - **Focus justification**: 対象を一般利用者向けの4コマンド例と用途説明に限定し、内部 route、manager、debug、global scope、ローカル開発手順を除外できる。
+  - **Directional fit**: 導入後に利用者が状態確認、予定確認、導入、現在プロジェクトの初期設定へ進める最小の入口を README に提供する。
+  - **Contract fit**: `status` の読み取り専用、`install --dry-run` の副作用なし、`install` の不足CLI導入、`init` の明示的な project initialization という既存意味論を変更しない。
+  - **Hidden bindings**: README に helper の基本操作例を含めることは既存の user-facing documentation scope の拡張であり、新しい実装上の binding constraint は発生しない。
+  - **Validation result**: PASS — 既存の `installer-003-4-readme-scope` を更新すれば、README 追加の範囲を十分に表現できる。
+- Current conclusion: `installer-003-4-readme-scope` に、導入後の `.dev/dev-tools.sh` 基本操作例を一般利用者向けに含める契約を追加して実装する。
+- Promotion to DECISIONS.yml: ready -> `installer-003-4-readme-scope`
+- Evidence / references (optional): `README.md`、`templates/dev-tools.sh`、`DECISIONS.yml` の `installer-011-15/20/21`
+
+### Entry 0045 (2026-08-02T00:01:02Z)
+- Why now: Gate B（implementation）として、promoted 済みの helper usage scope を README に反映する。
+- Findings / trade-offs:
+  - `README.md` に `Development tools` セクションを追加し、対象プロジェクトのルートから `.dev/dev-tools.sh status`、`install --dry-run`、`install`、`init` を実行する例と短い用途説明を記載した。
+  - helper の配置先、mode名、dry-runの位置づけは `templates/dev-tools.sh` の usage と active decision に合わせた。helper、install.sh、既存の導入経路は変更していない。
+  - helper suite は 15 tests passed、installer suite は 15 tests passed。help文字列、README command、Bash構文、`git diff --check` も PASS。
+- Current conclusion: `installer-003-4-readme-scope` に沿う helper usage の README 実装が完了した。新しい binding constraint は発生していない。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `README.md`、`templates/dev-tools.sh`、`bash tests/dev-tools.test.sh`、`bash tests/install.test.sh`
+
+### Entry 0046 (2026-08-02T00:01:03Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、helper usage の README 追加、active decision、記録、変更範囲の整合を確認する。
+- Findings / trade-offs:
+  - **Executable validation**: helper suite は 15 tests passed、installer suite は 15 tests passed。`dev-tools.sh --help` の usage、README の4 command、`bash -n`、`git diff --check` は PASS。
+  - **Artifact alignment**: README は Install の後に `.dev/dev-tools.sh` の status、dry-run、install、init だけを追加し、helper の内部 route や開発者向け手順を含まない。
+  - **Terminology and contract**: README の mode名と説明は `installer-011-15-mode-selection`、`installer-011-20-status-mode`、`installer-011-21-dry-run-preview` と整合している。
+  - **Decision-record hygiene**: `installer-003-install-sh-distribution` の link と Entry 0043〜0046 の discussion、validation、implementation、closeout が揃っている。全対象ファイルの diagnostics に問題はない。
+  - **Scope and risk**: helper、install.sh、テストの実装は変更していない。README の操作例は公開後に配布された `.dev/dev-tools.sh` と同じ配置契約を前提とする。
+- Current conclusion: implementation-validation の executable、artifact、terminology、decision-record hygiene、scope の確認を満たし、本変更を closeout できる。`installer-003-install-sh-distribution` と `installer-003-4-readme-scope` を `✅️Implementation Approved` とする。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `README.md`、`DECISIONS.yml`、`templates/dev-tools.sh`、`bash tests/dev-tools.test.sh`、`bash tests/install.test.sh`、`git diff --check`、`get_errors`
+
+### Entry 0047 (2026-08-02T00:02:00Z)
+- Why now: README に `dev-tools.sh` の簡単な使い方を追加したため、利用者が導入対象ツールと導入経路の前提を確認できるよう、現在の inventory も簡潔に記載する。
+- Findings / trade-offs:
+  - `templates/dev-tools.sh` の `TOOL_NAMES` は `python`、`ruby`、`rg`、`rtk`、`codegraph`、`uv`、`serena` を対象とし、`TOOL_COMMANDS` が実行コマンドを定義している。
+  - `PACKAGE_MANAGER_NAMES` は `apt-get`、`dnf`、`yum`、`pacman`、`zypper`、`apk`、`nix`、`proto`、`mise`、`asdf`、`brew` を status inventory と導入経路候補の検出対象にしている。
+  - README には現在の対象リストを説明用に置き、manager はインストール済みで利用可能なものを導入経路として考慮する旨だけを記載する。各managerが全ツールを扱うことや、manager本体を自動導入することは約束しない。
+- Current conclusion: 既存の `Development tools` セクションに対象ツール一覧と、利用可能な package manager を導入経路として考慮する短い説明を追加する。
+- Promotion to DECISIONS.yml: pending（discussion-validation 後）
+- Evidence / references (optional): `templates/dev-tools.sh` の `TOOL_NAMES`、`TOOL_COMMANDS`、`PACKAGE_MANAGER_NAMES`、`README.md`
+
+### Entry 0048 (2026-08-02T00:02:01Z)
+- Why now: Gate A step 2（discussion-validation）として、Entry 0047 の inventory 方針を helper の active contract と README scope へ照合する。
+- Findings / trade-offs:
+  - **Landscape coverage**: helper の tool/manager inventory、tool command mapping、status の manager inventory、README の既存 usage section を確認した。追加の実装経路やテスト契約は影響を受けない。
+  - **Focus justification**: README に現在の7ツールと11 managerを列挙し、managerの利用可能性を導入経路の考慮条件として一文で説明する範囲に限定する。package database query、manager本体の自動導入、toolごとの対応表は除外する。
+  - **Directional fit**: 利用者が `dev-tools.sh` の対象範囲を把握でき、導入時に既存managerが候補として使われることも理解できる。既存の簡潔なREADME方針を保つ。
+  - **Contract fit**: README のリストはコードの inventory と一致し、managerは検出・導入経路候補として扱うだけで、manager本体導入や新しいrouteを追加しない。
+  - **Hidden bindings**: README の対象リストは現在の helper inventory を説明するものであり、全managerと全toolの対応を保証しない。この境界は実装上の新規制約ではなく、既存 scope の明確化である。
+  - **Validation result**: PASS — 既存の `installer-003-4-readme-scope` を更新すれば、inventory記載の範囲を十分に表現できる。
+- Current conclusion: `installer-003-4-readme-scope` に、対象ツール一覧と利用可能な package manager を導入経路として考慮する説明を含めて実装する。
+- Promotion to DECISIONS.yml: ready -> `installer-003-4-readme-scope`
+- Evidence / references (optional): `README.md`、`templates/dev-tools.sh`、`DECISIONS.yml` の `installer-011-2/8/15/20/21`
+
+### Entry 0049 (2026-08-02T00:02:02Z)
+- Why now: Gate B（implementation）として、promoted 済みの inventory documentation scope を README に反映する。
+- Findings / trade-offs:
+  - `README.md` に Python、Ruby、ripgrep、RTK、CodeGraph、uv、Serena を実行コマンド付きで列挙した。
+  - `apt-get`、`dnf`、`yum`、`pacman`、`zypper`、`apk`、`nix`、`proto`、`mise`、`asdf`、`brew` を、インストール済みなら利用可能な導入経路として考慮する旨を一文で追加した。
+  - README の内容は `TOOL_NAMES`、`TOOL_COMMANDS`、`PACKAGE_MANAGER_NAMES` と照合した。helper suite は 15 tests passed、installer suite は 15 tests passed、Bash構文と `git diff --check` も PASS。
+- Current conclusion: `installer-003-4-readme-scope` に沿う inventory documentation の実装が完了した。新しい binding constraint は発生していない。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `README.md`、`templates/dev-tools.sh`、`bash tests/dev-tools.test.sh`、`bash tests/install.test.sh`
+
+### Entry 0050 (2026-08-02T00:02:03Z)
+- Why now: Gate B step 3 / Gate C（implementation-validation と closeout）として、inventory documentation の README 追加、active decision、記録、変更範囲の整合を確認する。
+- Findings / trade-offs:
+  - **Executable validation**: helper suite は 15 tests passed、installer suite は 15 tests passed。helper配列とREADMEの全項目照合、`bash -n`、`git diff --check` は PASS。
+  - **Artifact alignment**: README は7つの対象ツールを実行コマンド付きで列挙し、11個の package manager を利用可能な導入経路として考慮する旨だけを記載している。
+  - **Terminology and contract**: `python3`、`rg`、`codegraph` などの実行コマンド表記は `TOOL_COMMANDS` と一致し、managerの説明は `PACKAGE_MANAGER_NAMES` と導入経路候補の契約を越えていない。
+  - **Decision-record hygiene**: `installer-003-install-sh-distribution` の link と Entry 0047〜0050 の discussion、validation、implementation、closeout が揃っている。対象ファイルの diagnostics に問題はない。
+  - **Scope and risk**: helper、install.sh、テストの実装は変更していない。README のinventoryはhelperの現在値を説明するため、将来の対象追加時には更新が必要になる。
+- Current conclusion: implementation-validation の executable、artifact、terminology、decision-record hygiene、scope の確認を満たし、本変更を closeout できる。`installer-003-install-sh-distribution` と `installer-003-4-readme-scope` を `✅️Implementation Approved` とする。
+- Promotion to DECISIONS.yml: none
+- Evidence / references (optional): `README.md`、`DECISIONS.yml`、`templates/dev-tools.sh`、`bash tests/dev-tools.test.sh`、`bash tests/install.test.sh`、`git diff --check`、`get_errors`

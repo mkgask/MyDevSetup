@@ -55,6 +55,15 @@ decisions:
           decision: ターゲット未指定時の install.sh 既定値は DODKit と揃えて copilot とする。
           status: "✅️Implementation Approved"
           sub_decisions: []
+        - id: installer-003-4-readme-scope
+          decision: >
+            ルート README.md は、本リポジトリが自分で作って自分で使うためのものであることと、
+            対象プロジェクトのルートで実行する一般利用者向けの raw GitHub install.sh 導入方法と、
+            導入後に `.dev/dev-tools.sh` で使う基本操作例、現在の導入対象ツール一覧、
+            利用可能な package manager を導入経路として考慮する旨だけを最小限記載する。
+            ローカル checkout、開発・検証手順、内部実装の説明は記載しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
 
     - id: installer-004-supported-targets
       decision: >
