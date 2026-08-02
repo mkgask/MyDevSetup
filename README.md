@@ -45,3 +45,5 @@ bash .dev/dev-tools.sh init
 - Serena (`serena`)
 
 以下のパッケージマネージャーがインストールされていれば、利用可能な導入経路として考慮します: `apt-get`、`dnf`、`yum`、`pacman`、`zypper`、`apk`、`nix`、`proto`、`mise`、`asdf`、`brew`
+
+`install` で新たに `proto` または `mise` 経由の導入に成功した場合は、現在のシェルを有効化し、次回以降の Bash でも利用できるように必要な manager 設定と `~/.bashrc` の activation 行を冪等に更新します。既存ツール、`status`、`init`、`install --dry-run` はこの設定を変更しません。

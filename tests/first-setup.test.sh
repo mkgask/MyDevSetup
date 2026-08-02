@@ -51,7 +51,7 @@ write_mock_command() {
 }
 
 test_apt_commands() {
-	local expected_install="apt-get install -y patch libdb-dev build-essential libyaml-dev libssl-dev libreadline6-dev libffi-dev autoconf libgdbm-dev zlib1g-dev rustc libncurses5-dev libgdbm6 libgmp-dev curl git gh unzip gzip xz-utils"
+	local expected_install="apt-get install -y patch bison libdb-dev build-essential libyaml-dev libssl-dev libreadline6-dev libffi-dev autoconf libgdbm-dev zlib1g-dev rustc libncurses5-dev libgdbm6 libgmp-dev curl git gh unzip gzip xz-utils"
 	local expected_prefix="apt-get"
 	local mock_root="$TEST_ROOT/apt-commands"
 	local mock_bin="$mock_root/bin"

@@ -4,6 +4,7 @@ set -euo pipefail
 
 APT_PACKAGES=(
 	patch
+	bison
 	libdb-dev
 	build-essential
 	libyaml-dev

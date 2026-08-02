@@ -53,6 +53,17 @@ assert_not_contains() {
 	fi
 }
 
+assert_line_count() {
+	local expected="$1"
+	local line="$2"
+	local file_path="$3"
+	local description="$4"
+	local actual=""
+
+	actual="$(grep -Fxc -- "$line" "$file_path" || true)"
+	assert_equal "$expected" "$actual" "$description"
+}
+
 write_mock_command() {
 	local command_path="$1"
 	shift
@@ -69,16 +80,20 @@ prepare_mock_environment() {
 	MOCK_LOG="$MOCK_ROOT/commands.log"
 	MOCK_HOME="$MOCK_ROOT/home"
 	MOCK_AGENTS="$MOCK_ROOT/AGENTS.md"
+	MOCK_PROFILE="$MOCK_ROOT/.bashrc"
 
 	mkdir -p "$MOCK_BIN" "$MOCK_HOME" "$MOCK_ROOT/installers"
 	: > "$MOCK_LOG"
 	printf '%s\n' '# user content' > "$MOCK_AGENTS"
+	printf '%s\n' '# existing profile' > "$MOCK_PROFILE"
 
 	HOME="$MOCK_HOME"
 	PATH="$MOCK_BIN:/usr/bin:/bin"
 	DEV_TOOLS_AGENTS_PATH="$MOCK_AGENTS"
+	DEV_TOOLS_SHELL_PROFILE="$MOCK_PROFILE"
 	MOCK_FAIL_TOOL=""
-	export HOME PATH DEV_TOOLS_AGENTS_PATH MOCK_ROOT MOCK_BIN MOCK_LOG MOCK_FAIL_TOOL
+	MOCK_FAIL_POST_SETUP=""
+	export HOME PATH DEV_TOOLS_AGENTS_PATH DEV_TOOLS_SHELL_PROFILE MOCK_ROOT MOCK_BIN MOCK_LOG MOCK_PROFILE MOCK_FAIL_TOOL MOCK_FAIL_POST_SETUP
 }
 
 install_failed_tool_stubs() {
@@ -156,7 +171,7 @@ run_helper_with_inputs() {
 		helper_arguments+=" $quoted_argument"
 	done
 
-	command="env DEV_TOOLS_AGENTS_PATH=\"$MOCK_AGENTS\" HOME=\"$MOCK_HOME\" MOCK_ROOT=\"$MOCK_ROOT\" MOCK_BIN=\"$MOCK_BIN\" MOCK_LOG=\"$MOCK_LOG\" MOCK_FAIL_TOOL=\"$MOCK_FAIL_TOOL\" PATH=\"$PATH\" bash \"$HELPER_PATH\"$helper_arguments; command_status=\$?; printf '%s' \"\$command_status\" > \"$status_file\"; exit \"\$command_status\""
+	command="env DEV_TOOLS_AGENTS_PATH=\"$MOCK_AGENTS\" DEV_TOOLS_SHELL_PROFILE=\"$MOCK_PROFILE\" HOME=\"$MOCK_HOME\" MOCK_ROOT=\"$MOCK_ROOT\" MOCK_BIN=\"$MOCK_BIN\" MOCK_LOG=\"$MOCK_LOG\" MOCK_FAIL_TOOL=\"$MOCK_FAIL_TOOL\" MOCK_FAIL_POST_SETUP=\"$MOCK_FAIL_POST_SETUP\" PATH=\"$PATH\" bash \"$HELPER_PATH\"$helper_arguments; command_status=\$?; printf '%s' \"\$command_status\" > \"$status_file\"; exit \"\$command_status\""
 	printf '%s' "$inputs" | script --quiet --flush --command "$command" "$output_file" > "$output_file.stdout" 2>&1 || true
 	command_status="$(<"$status_file")"
 
@@ -187,6 +202,9 @@ test_route_filtering() {
 
 	routes="$(available_routes_for_tool python)"
 	assert_equal $'nix\nproto\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'python route filtering' || return 1
+
+	routes="$(available_routes_for_tool ruby)"
+	assert_equal $'nix\nproto\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'ruby source-build proto route' || return 1
 
 	routes="$(available_routes_for_tool rg)"
 	assert_equal $'nix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'rg route filtering' || return 1
@@ -267,7 +285,7 @@ test_brew_route_is_explicit() {
 		'exit 0'
 	write_mock_command "$MOCK_BIN/python3" 'exit 0'
 	install_with_proto python
-	assert_contains 'install python latest --yes' "$MOCK_LOG" 'proto installs without persistent pinning' || return 1
+	assert_contains 'install python latest --no-build --yes' "$MOCK_LOG" 'proto prefers prebuilt binaries without persistent pinning' || return 1
 	assert_not_contains '--pin' "$MOCK_LOG" 'proto does not write a global pin' || return 1
 }
 
@@ -468,7 +486,7 @@ run_helper_mode() {
 	local output_file="$MOCK_ROOT/output.log"
 	local command_status=0
 
-	if env DEV_TOOLS_AGENTS_PATH="$MOCK_AGENTS" HOME="$MOCK_HOME" MOCK_ROOT="$MOCK_ROOT" MOCK_BIN="$MOCK_BIN" MOCK_LOG="$MOCK_LOG" MOCK_FAIL_TOOL="$MOCK_FAIL_TOOL" PATH="$PATH" bash "$HELPER_PATH" "$mode" "$@" </dev/null > "$output_file" 2>&1; then
+	if env DEV_TOOLS_AGENTS_PATH="$MOCK_AGENTS" DEV_TOOLS_SHELL_PROFILE="$MOCK_PROFILE" HOME="$MOCK_HOME" MOCK_ROOT="$MOCK_ROOT" MOCK_BIN="$MOCK_BIN" MOCK_LOG="$MOCK_LOG" MOCK_FAIL_TOOL="$MOCK_FAIL_TOOL" MOCK_FAIL_POST_SETUP="$MOCK_FAIL_POST_SETUP" PATH="$PATH" bash "$HELPER_PATH" "$mode" "$@" </dev/null > "$output_file" 2>&1; then
 		command_status=0
 	else
 		command_status="$?"
@@ -644,7 +662,7 @@ test_dry_run_planned_commands() {
 	fi
 	assert_equal "$expected_system_command" "$(planned_install_command_for_route python system)" 'preview system command' || return 1
 	assert_equal 'nix profile install nixpkgs#python3' "$(planned_install_command_for_route python nix)" 'preview nix command' || return 1
-	assert_equal 'proto install python latest --yes' "$(planned_install_command_for_route python proto)" 'preview proto command' || return 1
+	assert_equal 'proto install python latest --no-build --yes' "$(planned_install_command_for_route python proto)" 'preview proto prebuilt command' || return 1
 	assert_equal 'mise install python@latest' "$(planned_install_command_for_route python mise)" 'preview mise command' || return 1
 	assert_equal 'asdf install ripgrep latest' "$(planned_install_command_for_route rg asdf)" 'preview asdf alias command' || return 1
 	assert_equal 'brew install python' "$(planned_install_command_for_route python brew)" 'preview brew command' || return 1
@@ -891,6 +909,206 @@ test_default_route_and_skip_selection() {
 	assert_not_contains '- `codegraph`: `codegraph`' "$MOCK_AGENTS" 'do not record skipped codegraph' || return 1
 }
 
+test_proto_source_dependency_aliases() {
+	local planned_command=""
+
+	prepare_mock_environment proto-source-dependency-aliases
+	write_mock_command "$MOCK_BIN/dpkg-query" \
+		'package_name="${@: -1}"' \
+		'case "$package_name" in libreadline-dev|libncurses-dev|libgdbm6t64) printf "%s" "install ok installed" ;; *) exit 1 ;; esac'
+	write_mock_command "$MOCK_BIN/proto" \
+		'if [[ "${1:-}" == "install" ]]; then printf "env=%s args=%s\\n" "${PROTO_BUILD_EXCLUDE_PACKAGES:-}" "$*" >> "$MOCK_LOG"; exit 0; fi' \
+		'if [[ "${1:-}" == "bin" ]]; then printf "%s\\n" "$MOCK_BIN/ruby"; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/ruby" 'exit 0'
+	source "$HELPER_PATH"
+
+	install_with_proto ruby
+	planned_command="$(planned_install_command_for_route ruby proto)"
+	assert_contains 'env=libreadline6-dev,libncurses5-dev,libgdbm6 args=install ruby latest --build --yes' "$MOCK_LOG" 'exclude installed Ubuntu package aliases from proto checks' || return 1
+	assert_equal 'env PROTO_BUILD_EXCLUDE_PACKAGES=libreadline6-dev\,libncurses5-dev\,libgdbm6 proto install ruby latest --build --yes' "$planned_command" 'preview Ruby source-build alias exclusions' || return 1
+
+	write_mock_command "$MOCK_BIN/dpkg-query" \
+		'package_name="${@: -1}"' \
+		'[[ "$package_name" == "libreadline-dev" ]] && printf "%s" "install ok installed"'
+	planned_command="$(planned_install_command_for_route ruby proto)"
+	assert_equal 'env PROTO_BUILD_EXCLUDE_PACKAGES=libreadline6-dev proto install ruby latest --build --yes' "$planned_command" 'do not exclude aliases without installed replacements' || return 1
+}
+
+write_proto_post_install_mocks() {
+	write_mock_command "$MOCK_ROOT/installers/ruby-command" \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\\n" "ruby 4.0.6"; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/proto" \
+		'if [[ "${1:-}" == "install" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "install" ]]; then printf "proto %s\\n" "$*" >> "$MOCK_LOG"; cp "$MOCK_ROOT/installers/ruby-command" "$MOCK_BIN/ruby"; chmod +x "$MOCK_BIN/ruby"; exit 0; fi' \
+		'if [[ "${1:-}" == "bin" ]]; then printf "%s\\n" "$MOCK_BIN/ruby"; exit 0; fi' \
+		'if [[ "${1:-}" == "pin" ]]; then printf "proto %s\\n" "$*" >> "$MOCK_LOG"; [[ "${MOCK_FAIL_POST_SETUP:-}" != "proto-pin" ]]; exit $?; fi' \
+		'if [[ "${1:-}" == "activate" ]]; then printf "proto %s\\n" "$*" >> "$MOCK_LOG"; printf "%s\\n" "export PROTO_TEST_ACTIVE=1"; exit 0; fi' \
+		'exit 0'
+}
+
+write_mise_post_install_mocks() {
+	write_mock_command "$MOCK_ROOT/installers/rg-command" \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\\n" "ripgrep 15.2.0"; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/mise" \
+		'if [[ "${1:-}" == "registry" ]]; then [[ "${2:-}" == "ripgrep" ]]; exit $?; fi' \
+		'if [[ "${1:-}" == "install" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "install" ]]; then printf "mise %s\\n" "$*" >> "$MOCK_LOG"; cp "$MOCK_ROOT/installers/rg-command" "$MOCK_BIN/rg"; chmod +x "$MOCK_BIN/rg"; exit 0; fi' \
+		'if [[ "${1:-}" == "use" ]]; then printf "mise %s\\n" "$*" >> "$MOCK_LOG"; exit 0; fi' \
+		'if [[ "${1:-}" == "bin-paths" ]]; then printf "%s\\n" "$MOCK_BIN"; exit 0; fi' \
+		'if [[ "${1:-}" == "activate" ]]; then printf "mise %s\\n" "$*" >> "$MOCK_LOG"; printf "%s\\n" "export MISE_TEST_ACTIVE=1"; exit 0; fi' \
+		'exit 1'
+}
+
+test_post_install_proto_activation() {
+	local output=""
+	local helper_status=0
+	local setup_line=0
+	local next_prompt_line=0
+
+	prepare_mock_environment post-install-proto
+	install_failed_tool_stubs
+	prepare_install_mocks
+	write_proto_post_install_mocks
+
+	if output="$(run_helper_with_inputs $'skip\nproto\nskip\nskip\nskip\nskip\nskip\n')"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'successful proto install with post-install setup' || return 1
+	assert_contains 'proto pin ruby latest --resolve --to user' "$MOCK_LOG" 'pin Ruby for future proto shells' || return 1
+	assert_contains 'proto activate bash' "$MOCK_LOG" 'activate proto in the current shell' || return 1
+	assert_contains 'eval "$(proto activate bash)"' "$MOCK_PROFILE" 'persist proto activation in the profile' || return 1
+	assert_contains '# existing profile' "$MOCK_PROFILE" 'preserve existing profile content' || return 1
+	assert_line_count '1' 'eval "$(proto activate bash)"' "$MOCK_PROFILE" 'proto profile activation is idempotent after install' || return 1
+	setup_line="$(grep -n -m1 'ruby is ready in this shell and future Bash sessions' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	next_prompt_line="$(grep -n -m1 'Choose an installation method for rg' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	if [[ -z "$setup_line" || -z "$next_prompt_line" ]] || ! (( setup_line < next_prompt_line )); then
+		fail_test 'proto post-install result was shown before the next route prompt'
+		return 1
+	fi
+
+	SHELL_PROFILE_PATH="$MOCK_PROFILE"
+	GLOBAL_INSTALL=0
+	post_install_setup ruby proto
+	assert_line_count '1' 'eval "$(proto activate bash)"' "$MOCK_PROFILE" 'repeated proto setup does not duplicate the profile line' || return 1
+}
+
+test_post_install_mise_activation() {
+	local output=""
+	local helper_status=0
+	local setup_line=0
+	local next_prompt_line=0
+
+	prepare_mock_environment post-install-mise
+	install_failed_tool_stubs
+	prepare_install_mocks
+	write_mise_post_install_mocks
+
+	if output="$(run_helper_with_inputs $'skip\nskip\nmise\nskip\nskip\nskip\nskip\n')"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'successful mise install with post-install setup' || return 1
+	assert_contains 'mise use --global ripgrep@latest' "$MOCK_LOG" 'select a global mise version' || return 1
+	assert_contains 'mise activate bash' "$MOCK_LOG" 'activate mise in the current shell' || return 1
+	assert_contains 'eval "$(mise activate bash)"' "$MOCK_PROFILE" 'persist mise activation in the profile' || return 1
+	assert_line_count '1' 'eval "$(mise activate bash)"' "$MOCK_PROFILE" 'mise profile activation is idempotent after install' || return 1
+	setup_line="$(grep -n -m1 'rg is ready in this shell and future Bash sessions' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	next_prompt_line="$(grep -n -m1 'Choose an installation method for rtk' "$MOCK_ROOT/output.log.stdout" | cut -d: -f1)"
+	if [[ -z "$setup_line" || -z "$next_prompt_line" ]] || ! (( setup_line < next_prompt_line )); then
+		fail_test 'mise post-install result was shown before the next route prompt'
+		return 1
+	fi
+}
+
+test_post_install_setup_failure() {
+	local output=""
+	local helper_status=0
+
+	prepare_mock_environment post-install-failure
+	install_failed_tool_stubs
+	prepare_install_mocks
+	write_proto_post_install_mocks
+	MOCK_FAIL_POST_SETUP=proto-pin
+	export MOCK_FAIL_POST_SETUP
+
+	if output="$(run_helper_with_inputs $'skip\nproto\nskip\nskip\nskip\nskip\nskip\n')"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '1' "$helper_status" 'post-install setup failure contributes to the final status' || return 1
+	assert_contains 'ruby       failed' "$MOCK_ROOT/output.log.stdout" 'report post-install setup failure' || return 1
+	assert_contains 'post-install setup failed' "$MOCK_ROOT/output.log.stdout" 'include setup failure details' || return 1
+	assert_contains 'proto install ruby latest --build --yes' "$MOCK_LOG" 'retain the successful installation before setup failure' || return 1
+	assert_not_contains 'proto activate bash' "$MOCK_LOG" 'do not activate after failed proto pin' || return 1
+	assert_not_contains 'eval "$(proto activate bash)"' "$MOCK_PROFILE" 'failed setup does not append profile activation' || return 1
+	assert_contains 'Choose an installation method for rg' "$MOCK_ROOT/output.log.stdout" 'continue to the next tool after setup failure' || return 1
+
+	MOCK_FAIL_POST_SETUP=""
+	export MOCK_FAIL_POST_SETUP
+}
+
+test_post_install_side_effect_boundaries() {
+	local output=""
+	local helper_status=0
+	local profile_snapshot=""
+
+	prepare_mock_environment post-install-existing
+	install_failed_tool_stubs
+	write_mock_command "$MOCK_BIN/ruby" \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\\n" "ruby 4.0.6"; exit 0; fi' \
+		'exit 1'
+	profile_snapshot="$(cat "$MOCK_PROFILE")"
+	output="$(run_helper_mode install)"
+	assert_contains 'ruby is already available' "$MOCK_ROOT/output.log" 'existing tools are not post-configured' || return 1
+	assert_equal "$profile_snapshot" "$(cat "$MOCK_PROFILE")" 'existing tools do not change the profile' || return 1
+
+	prepare_mock_environment post-install-status
+	install_failed_tool_stubs
+	profile_snapshot="$(cat "$MOCK_PROFILE")"
+	if output="$(run_helper_mode status)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '1' "$helper_status" 'status keeps its existing unavailable result' || return 1
+	assert_equal "$profile_snapshot" "$(cat "$MOCK_PROFILE")" 'status does not change the profile' || return 1
+
+	prepare_mock_environment post-install-init
+	install_failed_tool_stubs
+	profile_snapshot="$(cat "$MOCK_PROFILE")"
+	output="$(run_helper_mode init)"
+	assert_equal "$profile_snapshot" "$(cat "$MOCK_PROFILE")" 'init does not change the profile' || return 1
+
+	prepare_mock_environment post-install-global
+	source "$HELPER_PATH"
+	profile_snapshot="$(cat "$MOCK_PROFILE")"
+	GLOBAL_INSTALL=1
+	post_install_setup ruby proto
+	assert_equal "$profile_snapshot" "$(cat "$MOCK_PROFILE")" 'global install keeps post-install setup process-scoped' || return 1
+
+	prepare_mock_environment post-install-dry-run
+	install_failed_tool_stubs
+	prepare_install_mocks
+	write_proto_post_install_mocks
+	profile_snapshot="$(cat "$MOCK_PROFILE")"
+	if output="$(run_helper_mode install --dry-run)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'dry-run remains successful' || return 1
+	assert_equal "$profile_snapshot" "$(cat "$MOCK_PROFILE")" 'dry-run does not change the profile' || return 1
+	assert_not_contains 'proto pin' "$MOCK_LOG" 'dry-run does not pin proto versions' || return 1
+	assert_not_contains 'proto activate' "$MOCK_LOG" 'dry-run does not activate proto' || return 1
+}
+
 run_test() {
 	local test_name="$1"
 	shift
@@ -922,5 +1140,10 @@ run_test 'dry-run planned commands' test_dry_run_planned_commands
 run_test 'dry-run official routes without curl' test_dry_run_official_routes_without_curl
 run_test 'status mode' test_status_mode
 run_test 'project initialization mode' test_project_init_mode
+run_test 'proto source dependency aliases' test_proto_source_dependency_aliases
+run_test 'post-install proto activation' test_post_install_proto_activation
+run_test 'post-install mise activation' test_post_install_mise_activation
+run_test 'post-install setup failure' test_post_install_setup_failure
+run_test 'post-install side-effect boundaries' test_post_install_side_effect_boundaries
 
 printf '%s\n' "Passed $PASS_COUNT focused dev-tools tests."

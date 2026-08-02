@@ -240,7 +240,33 @@ decisions:
             uv が未導入または導入失敗した場合、Serena の uv-tool route は候補にせず、Serenaを暗黙に別経路で導入しない。
           status: "✅️Implementation Approved"
           link: "records/dev-tools-001-optional-tool-installation.md"
-          sub_decisions: []
+          sub_decisions:
+            - id: installer-011-2-1-proto-prebuilt
+              decision: >
+                proto route は prebuilt binary のダウンロードを提供する対象ツール（現行では Python）の導入時に
+                `proto install <tool> latest --no-build --yes` を使う。prebuilt が利用できない場合は proto の失敗をそのまま返し、
+                sudo による proto 実行や source build への暗黙フォールバックは行わない。dry-run の planned command も同じ引数を表示する。
+              status: "✅️Implementation Approved"
+              link: "records/dev-tools-003-proto-prebuilt-installation.md"
+              sub_decisions: []
+            - id: installer-011-2-2-proto-ruby-source-only
+              decision: >
+                現行の proto Ruby plugin は `BuildFromSource` を既定とし prebuilt download handler を提供しないが、
+                Ruby の proto route は候補へ表示し、選択時は `proto install ruby latest --build --yes` で source build を実行する。
+                helper は proto の前に sudo を付けず、prebuilt 不在時に別 route や別の build mode へ暗黙 fallback しない。
+              status: "✅️Implementation Approved"
+              link: "records/dev-tools-004-proto-source-dependencies.md"
+              sub_decisions: []
+            - id: installer-011-2-3-proto-apt-aliases
+              decision: >
+                proto Ruby source build の Debian/Ubuntu 依存は first-setup で準備し、依存リストには `bison` を含める。
+                Ubuntu の代替パッケージ（`libreadline-dev`、`libncurses-dev`、`libgdbm6t64`）が `dpkg-query` で導入済みと確認できる場合だけ、
+                proto が完全一致で探す旧名（`libreadline6-dev`、`libncurses5-dev`、`libgdbm6`）を process-local な
+                `PROTO_BUILD_EXCLUDE_PACKAGES` に追加する。代替未導入の旧名は除外せず、永続 proto 設定を変更しない。
+                実行 command と dry-run の planned command は同じ除外環境を表現する。
+              status: "✅️Implementation Approved"
+              link: "records/dev-tools-004-proto-source-dependencies.md"
+              sub_decisions: []
 
         - id: installer-011-3-command-and-version-contract
           decision: >
@@ -256,8 +282,10 @@ decisions:
             既定の install モードでは rtk、codegraph、uv、Serena を含む対象ツールのCLI本体だけを配置し、rtk init、codegraph install、codegraph init、uv init などの初期設定を自動実行しない。
             SerenaのMCPクライアント設定、プロジェクト作成、プロジェクト索引、HTTP daemon/service化も自動実行しない。
             明示的な init モードでは、現在プロジェクトで利用するために必要な公式の初期設定をツールごとに実行できる。
-            ~/.local/bin のためにシェル設定ファイルを変更せず、導入先の検証に必要なPATH調整は今回の実行中に限定する。
+            一般的な導入経路では ~/.local/bin のためにシェル設定ファイルを変更せず、導入先の検証に必要なPATH調整は今回の実行中に限定する。
+            ただし通常の install で今回新規導入に成功した proto/mise 経路のmanager利用可能化は、CLI初期設定とは別の post-install 契約に従う。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-005-post-install-activation.md"
           sub_decisions: []
 
         - id: installer-011-5-failure-and-noninteractive-policy
@@ -315,11 +343,21 @@ decisions:
 
         - id: installer-011-11-process-scoped-manager-activation
           decision: >
-            通常の install でマネージャー導入後の検証に必要なPATH変更は現在のinstall.shプロセス内だけに限定し、シェル起動ファイルや
-            protoのグローバルpinなどの永続設定を追加しない。--global の install では、全プロジェクトから利用可能な導入経路の検証に必要な一時的PATH・manager activationの拡張だけを許可し、
+            manager導入後の検証に必要なPATH変更は原則として現在のinstall.shプロセス内だけに限定する。--global の install では、全プロジェクトから利用可能な導入経路の検証に必要な一時的PATH・manager activationの拡張だけを許可し、
             shell起動ファイル、manager設定全体、agent設定の永続変更は行わない。uv standalone installer後はuvの導入先を、Serena導入後は `uv tool dir --bin` の結果を現在プロセスのPATHへ反映して検証する。
+            通常の install で今回新規導入に成功した proto/mise の post-install manager activation だけは、sub-decision の範囲でこの原則の明示的な例外とする。
           status: "✅️Implementation Approved"
-          sub_decisions: []
+          link: "records/dev-tools-005-post-install-activation.md"
+          sub_decisions:
+            - id: installer-011-11-1-post-install-manager-activation
+              decision: >
+                通常の `install` 実行で、事前検出時には利用不能だったツールを proto または mise 経由で今回新規導入し、導入コマンドが成功した場合だけ、次のツールのroute promptへ進む前に post-install manager activation を完了して表示する。
+                proto は導入した対象を `proto pin <tool> latest --resolve --to user` で user scopeへpinし、現在のhelperプロセスへ `eval "$(proto activate bash)"` を適用する。mise は導入後に `mise use --global <tool>@latest` を実行し、現在のhelperプロセスへ `eval "$(mise activate bash)"` を適用する。
+                対応する activation 行は `DEV_TOOLS_SHELL_PROFILE` で指定したprofile（既定は `$HOME/.bashrc`）へ完全一致で冪等に一度だけ追記し、既存の他行は変更しない。profile追記とmanager設定が成功した後に導入後command検証を行う。
+                既存ツール、skip、route導入失敗、post-install setup失敗後の別対象、`--global`、`status`、`init`、`install --dry-run` ではprofile・manager設定を変更しない。post-install setup失敗時は導入済みバイナリを削除せず、対象をsetup failureとして記録し、後続対象を継続したうえで既存の失敗終了契約に従い最終statusを非0にする。
+              status: "✅️Implementation Approved"
+              link: "records/dev-tools-005-post-install-activation.md"
+              sub_decisions: []
 
         - id: installer-011-12-test-file-naming
           decision: >

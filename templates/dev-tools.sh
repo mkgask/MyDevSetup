@@ -36,6 +36,7 @@ DEV_TOOLS_MODE="install"
 GLOBAL_INSTALL=0
 
 AGENTS_PATH="${DEV_TOOLS_AGENTS_PATH:-AGENTS.md}"
+SHELL_PROFILE_PATH="${DEV_TOOLS_SHELL_PROFILE:-${HOME:-}/.bashrc}"
 MANAGED_BLOCK_BEGIN='<!-- BEGIN MYDEVSETUP DEV TOOLS -->'
 MANAGED_BLOCK_END='<!-- END MYDEVSETUP DEV TOOLS -->'
 
@@ -60,6 +61,7 @@ Description:
 
 Environment:
 	DEV_TOOLS_AGENTS_PATH  Override the AGENTS.md path for this run.
+	DEV_TOOLS_SHELL_PROFILE Override the Bash profile path for post-install activation.
 USAGE
 }
 
@@ -416,6 +418,65 @@ proto_tool_for_tool() {
 			return 1
 			;;
 	esac
+}
+
+proto_build_mode_for_tool() {
+	case "$1" in
+		python)
+			printf '%s' '--no-build'
+			;;
+		ruby)
+			printf '%s' '--build'
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+proto_build_excluded_packages_for_tool() {
+	local tool_name="$1"
+	local existing_packages="${PROTO_BUILD_EXCLUDE_PACKAGES:-}"
+	local package_status=""
+	local requested_package=""
+	local replacement_package=""
+	local -a alias_packages=()
+
+	case "$tool_name" in
+		ruby)
+		if ! command -v dpkg-query >/dev/null 2>&1; then
+			printf '%s' "$existing_packages"
+			return 0
+		fi
+
+		while IFS='|' read -r requested_package replacement_package; do
+			[[ -n "$requested_package" ]] || continue
+			package_status="$(dpkg-query -W -f='${Status}' "$replacement_package" 2>/dev/null || true)"
+			[[ "$package_status" == 'install ok installed' ]] || continue
+
+			case ",$existing_packages," in
+				*",$requested_package,"*)
+					;;
+				*)
+					alias_packages+=("$requested_package")
+					;;
+			esac
+		done <<'ALIASES'
+libreadline6-dev|libreadline-dev
+libncurses5-dev|libncurses-dev
+libgdbm6|libgdbm6t64
+ALIASES
+		;;
+	esac
+
+	if ((${#alias_packages[@]} > 0)); then
+		if [[ -n "$existing_packages" ]]; then
+			existing_packages+=','
+		fi
+		existing_packages+="$(IFS=,; printf '%s' "${alias_packages[*]}")"
+	fi
+
+	printf '%s' "$existing_packages"
 }
 
 proto_route_available() {
@@ -806,9 +867,15 @@ install_with_nix() {
 install_with_proto() {
 	local tool_name="$1"
 	local manager_tool="$(proto_tool_for_tool "$tool_name")"
+	local build_mode="$(proto_build_mode_for_tool "$tool_name")"
+	local excluded_packages="$(proto_build_excluded_packages_for_tool "$tool_name")"
 	local executable_path=""
 
-	run_recorded_command proto install "$manager_tool" latest --yes || return $?
+	if [[ -n "$excluded_packages" ]]; then
+		run_recorded_command env "PROTO_BUILD_EXCLUDE_PACKAGES=$excluded_packages" proto install "$manager_tool" latest "$build_mode" --yes || return $?
+	else
+		run_recorded_command proto install "$manager_tool" latest "$build_mode" --yes || return $?
+	fi
 	record_operation_command proto bin "$manager_tool" latest
 	if executable_path="$(proto bin "$manager_tool" latest 2>/dev/null)"; then
 		:
@@ -944,7 +1011,13 @@ planned_install_command_for_route() {
 		;;
 		proto)
 		manager_tool="$(proto_tool_for_tool "$tool_name")" || return 1
-		format_command proto install "$manager_tool" latest --yes
+			build_mode="$(proto_build_mode_for_tool "$tool_name")" || return 1
+			local excluded_packages="$(proto_build_excluded_packages_for_tool "$tool_name")"
+			if [[ -n "$excluded_packages" ]]; then
+				format_command env "PROTO_BUILD_EXCLUDE_PACKAGES=$excluded_packages" proto install "$manager_tool" latest "$build_mode" --yes
+			else
+				format_command proto install "$manager_tool" latest "$build_mode" --yes
+			fi
 		;;
 		mise)
 		manager_tool="$(mise_tool_for_tool "$tool_name")" || return 1
@@ -1002,6 +1075,120 @@ install_with_route() {
 		return 1
 		;;
 	esac
+}
+
+append_shell_profile_line() {
+	local profile_line="$1"
+	local profile_directory=""
+
+	if [[ -z "$SHELL_PROFILE_PATH" ]]; then
+		log_error "Cannot update the shell profile: no profile path is configured"
+		return 1
+	fi
+
+	if [[ -L "$SHELL_PROFILE_PATH" ]]; then
+		log_error "Cannot safely update the shell profile: $SHELL_PROFILE_PATH"
+		return 1
+	fi
+
+	if [[ -e "$SHELL_PROFILE_PATH" && ( ! -f "$SHELL_PROFILE_PATH" || ! -r "$SHELL_PROFILE_PATH" ) ]]; then
+		log_error "Cannot safely update the shell profile: $SHELL_PROFILE_PATH"
+		return 1
+	fi
+
+	profile_directory="$(dirname "$SHELL_PROFILE_PATH")"
+	if [[ ! -d "$profile_directory" ]]; then
+		mkdir -p "$profile_directory" || return 1
+	fi
+
+	if [[ ! -e "$SHELL_PROFILE_PATH" ]]; then
+		: > "$SHELL_PROFILE_PATH" || return 1
+	fi
+
+	if [[ ! -w "$SHELL_PROFILE_PATH" ]]; then
+		log_error "Cannot safely update the shell profile: $SHELL_PROFILE_PATH"
+		return 1
+	fi
+
+	if grep -Fqx -- "$profile_line" "$SHELL_PROFILE_PATH"; then
+		return 0
+	fi
+
+	record_pipeline_operation "append $profile_line to $SHELL_PROFILE_PATH"
+	if [[ -s "$SHELL_PROFILE_PATH" ]]; then
+		printf '\n' >> "$SHELL_PROFILE_PATH" || return 1
+	fi
+	printf '%s\n' "$profile_line" >> "$SHELL_PROFILE_PATH" || return 1
+}
+
+run_manager_shell_activation() {
+	local manager_name="$1"
+	local activation_script=""
+
+	record_pipeline_operation "$manager_name activate bash"
+	if activation_script="$("$manager_name" activate bash)"; then
+		:
+	else
+		return $?
+	fi
+
+	eval "$activation_script"
+}
+
+post_install_setup() {
+	local tool_name="$1"
+	local route_name="$2"
+	local manager_tool=""
+	local profile_line=""
+
+	if [[ "$GLOBAL_INSTALL" -eq 1 ]]; then
+		return 0
+	fi
+
+	case "$route_name" in
+		proto)
+		manager_tool="$(proto_tool_for_tool "$tool_name")" || return 1
+		log_info "Completing post-install setup for $tool_name via proto"
+		if run_recorded_command proto pin "$manager_tool" latest --resolve --to user; then
+			:
+		else
+			return $?
+		fi
+		if run_manager_shell_activation proto; then
+			:
+		else
+			return $?
+		fi
+		profile_line='eval "$(proto activate bash)"'
+		;;
+		mise)
+		manager_tool="$(mise_tool_for_tool "$tool_name")" || return 1
+		log_info "Completing post-install setup for $tool_name via mise"
+		if run_recorded_command mise use --global "$manager_tool@latest"; then
+			:
+		else
+			return $?
+		fi
+		refresh_mise_path "$manager_tool"
+		if run_manager_shell_activation mise; then
+			:
+		else
+			return $?
+		fi
+		profile_line='eval "$(mise activate bash)"'
+		;;
+		*)
+		return 0
+		;;
+	esac
+
+	if append_shell_profile_line "$profile_line"; then
+		:
+	else
+		return $?
+	fi
+
+	log_success "$tool_name is ready in this shell and future Bash sessions"
 }
 
 # ---
@@ -1127,6 +1314,16 @@ process_install_tool() {
 		operation_command="${LAST_OPERATION_COMMAND:-unknown command}"
 		set_tool_result "$tool_name" failed "$selected_route (exit status $operation_status; command: $operation_command)"
 		log_error "Failed to install $tool_name via $selected_route (exit status $operation_status; command: $operation_command)"
+		return 0
+	fi
+
+	if post_install_setup "$tool_name" "$selected_route"; then
+		:
+	else
+		operation_status="$?"
+		operation_command="${LAST_OPERATION_COMMAND:-unknown post-install setup command}"
+		set_tool_result "$tool_name" failed "$selected_route (post-install setup failed; exit status $operation_status; command: $operation_command)"
+		log_error "Installed $tool_name via $selected_route but post-install setup failed (exit status $operation_status; command: $operation_command)"
 		return 0
 	fi
 
