@@ -654,3 +654,80 @@ Append rules:
 - Artifact alignment: Focused assertions cover both execution modes, while the active dry-run and failure/non-interactive decisions remain sufficient and approved.
 - Terminology and record hygiene: The user-facing phrase is consistently `selected skip`; no decision promotion or status change is required.
 - Validation result: PASS. Remaining risk is limited to the existing untested live third-party installation paths, which this presentation-only change does not affect.
+
+### Entry 0068 (2026-08-02T00:00:29Z)
+- Why now: Selecting the proto route for Ruby failed when proto's source-build workflow tried to run `apt update` without permission. The user requested a neighboring `first-setup.sh` that installs the required libraries before using the development-tool helper.
+- Active baseline: `templates/dev-tools.sh` currently runs `proto install ruby latest --yes` as the current user, while the system route separately uses `sudo` for system package installation. Proto 0.59.0's install help exposes no sudo or dependency-install option, and proto is installed under the user's `~/.proto`.
+- Findings / trade-offs:
+  - The preparation script should elevate only the `apt-get` commands. Running `sudo proto` could move proto's configuration and Ruby installation into root's environment, after which the helper's user-side command verification would not find the result.
+  - The required package set is the Ruby build dependency list reported by proto: `patch`, `libdb-dev`, `build-essential`, `libyaml-dev`, `libssl-dev`, `libreadline6-dev`, `libffi-dev`, `autoconf`, `libgdbm-dev`, `zlib1g-dev`, `rustc`, `libncurses5-dev`, `libgdbm6`, and `libgmp-dev`.
+  - The requested artifact is a standalone apt-specific preparation helper beside `templates/dev-tools.sh`. It should not modify shell profiles, proto configuration, manager settings, or run proto/tool installation itself. Top-level `install.sh` distribution is outside this request because the user asked for the neighboring template file only.
+- Focus areas: `templates/first-setup.sh` argument handling, apt availability, root-versus-sudo selection, deterministic package list, update-before-install order, and actionable failure behavior.
+- Explicit exclusions: no `sudo proto` invocation, no automatic Ruby or other CLI installation, no package-manager fallback, no persistent PATH or manager configuration, and no `install.sh` asset integration.
+- Current conclusion: Add an executable Bash helper that requires `apt-get`, runs `apt-get update`, then installs the fixed Ruby/proto build dependency list with `sudo` only when the current user is not root.
+- Next validation target: discussion-validation should confirm the root/sudo boundary, package list fidelity to the observed proto failure, update-before-install order, non-Debian failure behavior, and the intentional manual-only distribution boundary.
+- Promotion to DECISIONS.yml: pending (add `installer-011-22-first-setup-dependencies` under the dev-tools decisions).
+
+### Entry 0069 (2026-08-02T00:00:30Z)
+- Discussion-validation: The bounded scan covered the proto route implementation, proto install help, existing system-route sudo handling, package-manager scope decisions, deployment assets, and the requested neighboring template location. It identified the main safety risk: elevating the manager command instead of only the OS package operation.
+- Focus validation: A standalone apt preparation helper is justified because the missing dependencies belong to proto's Ruby source build, while the actual proto install must remain user-owned. The fixed package list and update-before-install ordering are directly grounded in the observed failure output.
+- Directional fit: The candidate directly addresses the failed first setup without changing route selection or making proto installation implicit. Keeping it out of `install.sh` avoids expanding the distribution contract beyond the explicit request.
+- Contract fit: The helper preserves the existing manager non-configuration boundary, process-scoped PATH policy, and user-owned proto installation model. Non-apt systems fail clearly instead of silently selecting another package manager.
+- Hidden bindings: Root/sudo applies only to `apt-get`; the package list must remain explicit and the script must not invoke proto. These are implementation constraints for the new decision.
+- Validation result: PASS. The candidate is ready for promotion and implementation.
+- Promotion targets: Add `installer-011-22-first-setup-dependencies` with the package list, sudo boundary, command order, no-proto/no-persistent-config boundary, and manual-only template scope.
+
+### Entry 0070 (2026-08-02T00:00:31Z)
+- Implementation result: Added executable `templates/first-setup.sh` with the fixed proto Ruby build dependency list. It checks for `apt-get`, uses `sudo apt-get` only for non-root users, runs `update` before `install -y`, supports `--help`, and rejects unsupported arguments.
+- Boundary result: The script does not invoke proto or Ruby, change PATH or shell configuration, modify manager state, or alter `install.sh` distribution. It reports clear errors when apt-get or required sudo access is unavailable.
+- Validation result: A mocked non-root run confirmed `sudo apt-get update` precedes `sudo apt-get install -y` and that all 14 requested packages are passed. The actual host apt database was not modified.
+
+### Entry 0071 (2026-08-02T00:00:32Z)
+- Implementation-validation: The artifact matches `installer-011-22-first-setup-dependencies`: apt-only preparation, root/sudo boundary, explicit package set, no proto invocation, and manual-only template scope.
+- Executable validation: The new script passes `bash -n`, `--help`, executable-permission checks, and the mocked apt command test. Existing helper and installer suites pass 15 tests each; related Bash syntax, editor diagnostics, and `git diff --check` also pass.
+- Terminology and record hygiene: The package names and sudo boundary are consistent between the decision, implementation, and record. No additional binding constraint was discovered.
+- Closeout result: PASS. Live apt installation remains intentionally unexecuted to avoid changing the host system; the user can run the new helper explicitly before selecting proto for Ruby.
+
+### Entry 0072 (2026-08-02T00:00:33Z)
+- Validation follow-up: Added the first-setup mock command check to `tests/dev-tools.test.sh`, preserving the project's two-file shell test convention. The test verifies update-before-install ordering, the complete dependency list, non-root sudo routing when applicable, and the absence of proto invocation.
+- Updated executable result: The focused helper suite passes 16 tests, including the new first-setup case. No implementation or decision contract changed.
+
+### Entry 0073 (2026-08-02T00:00:34Z)
+- Why now: The first-setup dependency bootstrap has a separate executable and lifecycle from the development-tool helper. The user requested that its decision live under a dedicated `first-setup` category and that its focused test not be mixed into `tests/dev-tools.test.sh`.
+- Broad-scan findings: `DECISIONS.yml` currently has a top-level `dev-tools` category containing `installer-011-22-first-setup-dependencies`, while `tests/dev-tools.test.sh` contains the only first-setup test case. The general test-naming decision currently names only the dev-tools and installer suites.
+- Direction: Move the existing decision object, without changing its ID or dependency/privilege contract, into a new top-level `first-setup` category. Move the mock test into `tests/first-setup.test.sh`, remove its path constant and test registration from the dev-tools suite, and update the shared test-naming contract to include all three focused suites.
+- Explicit exclusions: no change to `templates/first-setup.sh` behavior, package list, root/sudo boundary, `install.sh` distribution, or `templates/dev-tools.sh` route behavior.
+- Discussion-validation: The split follows the actual ownership boundary and reduces unrelated suite coupling. Preserving the decision ID keeps existing record references stable; the new test path becomes an explicit first-setup contract rather than an implicit dev-tools fixture.
+- Validation result: PASS. Promotion targets are the `first-setup` category placement, the shared test-name update, and the new standalone first-setup test file.
+
+### Entry 0074 (2026-08-02T00:00:35Z)
+- Implementation result: Moved `installer-011-22-first-setup-dependencies` into the top-level `first-setup` category without changing its ID or apt/root/sudo contract. The decision now names `tests/first-setup.test.sh` as its focused test.
+- Test result: Moved the mock apt test into `tests/first-setup.test.sh` and removed the first-setup fixture from `tests/dev-tools.test.sh`. The first-setup suite passes 1 test, the dev-tools suite passes 15 tests, and the installer suite passes 15 tests.
+- Implementation-validation: Bash syntax, editor diagnostics, YAML parsing with unique decision IDs, reference checks, executable permission, and `git diff --check` pass. No source behavior, install.sh distribution, or route behavior changed.
+- Closeout result: PASS. The category and test ownership now match the separate first-setup responsibility.
+
+### Entry 0075 (2026-08-02T00:00:36Z)
+- Why now: `templates/first-setup.sh` uses plain `[ERROR]` and `[SUCCESS]` output, while `install.sh` and `templates/dev-tools.sh` use the shared emoji, color, TTY, and `NO_COLOR` logging convention. The user requested that the first-setup logger match those scripts.
+- Findings: Existing conventions are `[INFO]` without color, `[⚠️WARNING]` in yellow on stdout, `[❌️ERROR]` in red on stderr, and `[✅️SUCCESS]` in green on stdout. Color is emitted only for the corresponding TTY when `NO_COLOR` is absent; plain labels are emitted otherwise.
+- Direction: Copy the shared stdout/stderr color capability checks and update first-setup error/success logging to the same labels and ANSI colors. Keep first-setup's current info messages and apt behavior unchanged. Extend `tests/first-setup.test.sh` to assert the no-color user-facing labels without requiring a real TTY.
+- Explicit exclusions: no warning path is introduced, no apt command or package change, no install.sh distribution change, and no proto/Ruby invocation.
+- Discussion-validation: The logger-only change is directly bounded to the existing output contract and does not alter first-setup control flow. The candidate is ready for promotion and implementation.
+- Promotion target: Extend `installer-011-22-first-setup-dependencies` with the shared log label, emoji, color, TTY, and `NO_COLOR` contract.
+
+### Entry 0076 (2026-08-02T00:00:37Z)
+- Implementation result: Updated `templates/first-setup.sh` to use the same `supports_stdout_color` and `supports_stderr_color` checks as `install.sh` and `templates/dev-tools.sh`. Info remains `[INFO]`; errors now use red `[❌️ERROR]` on stderr and successes use green `[✅️SUCCESS]` on stdout, with plain emoji labels when color is unavailable or `NO_COLOR` is set.
+- Test result: Extended `tests/first-setup.test.sh` to verify the shared info/error/success labels and no ANSI output under `NO_COLOR=1`. The focused first-setup test passes, as do the dev-tools and installer suites with 15 tests each.
+- Implementation-validation: Bash syntax, editor diagnostics, executable checks, and `git diff --check` pass. No apt command, package list, route behavior, or distribution behavior changed.
+- Closeout result: PASS. First-setup logging now matches the existing installer and development-tools logger conventions.
+
+### Entry 0077 (2026-08-02T00:00:38Z)
+- Why now: The user requested that first-setup also install `curl`, `git`, `gh`, `unzip`, `gzip`, and `xz-utils`.
+- Direction: Extend the explicit apt package list and its focused expected command with those six packages. Keep `apt-get update` before `apt-get install -y`, preserve root-versus-sudo selection, and do not add any tool-manager or proto invocation.
+- Discussion-validation: These are ordinary Debian/Ubuntu bootstrap utilities and fit the existing first-setup apt boundary. The change is limited to the package contract and its test; logging, distribution, and route behavior remain unchanged.
+- Promotion target: Update `installer-011-22-first-setup-dependencies` with the six additional packages.
+
+### Entry 0078 (2026-08-02T00:00:39Z)
+- Implementation result: Added `curl`, `git`, `gh`, `unzip`, `gzip`, and `xz-utils` to `templates/first-setup.sh` in the requested order, and synchronized the focused install-command expectation and `first-setup` decision contract.
+- Test result: The first-setup mock test passes with the expanded package command. The dev-tools suite passes 15 tests and the installer suite passes 15 tests.
+- Implementation-validation: Bash syntax, editor diagnostics, executable checks, package-reference checks, and `git diff --check` pass. No live apt operation was performed.
+- Closeout result: PASS. The first-setup bootstrap now covers the requested CLI, archive, and compression utilities in addition to the proto Ruby build dependencies.

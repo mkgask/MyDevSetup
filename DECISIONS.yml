@@ -323,7 +323,7 @@ decisions:
 
         - id: installer-011-12-test-file-naming
           decision: >
-            開発用テストの標準ファイル名は tests/dev-tools.test.sh と tests/install.test.sh とし、テスト実行コマンドや参照箇所もこの名前へ同期する。
+            開発用テストの標準ファイル名は tests/dev-tools.test.sh、tests/first-setup.test.sh、tests/install.test.sh とし、テスト実行コマンドや参照箇所もこの名前へ同期する。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -405,3 +405,18 @@ decisions:
           status: "✅️Implementation Approved"
           link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []
+
+  first-setup:
+    - id: installer-011-22-first-setup-dependencies
+      decision: >
+        templates/first-setup.sh は Linux/WSL の apt-get 環境で、proto の Ruby source build に必要な
+        `patch`、`libdb-dev`、`build-essential`、`libyaml-dev`、`libssl-dev`、`libreadline6-dev`、`libffi-dev`、
+        `autoconf`、`libgdbm-dev`、`zlib1g-dev`、`rustc`、`libncurses5-dev`、`libgdbm6`、`libgmp-dev`、
+        `curl`、`git`、`gh`、`unzip`、`gzip`、`xz-utils` を、
+        `apt-get update` の後に `apt-get install -y` で導入する。実行ユーザーがrootでない場合だけ apt-get に sudo を付け、proto、Ruby、shell起動ファイル、PATH、manager設定は変更しない。
+        apt-get が利用できない、または非root環境でsudoが利用できない場合は明示的なエラーで終了し、他のpackage managerへフォールバックしない。
+        first-setup.sh は templates/dev-tools.sh の隣に置く手動実行用テンプレートとし、対応するfocused testは tests/first-setup.test.sh に置く。
+        初期スコープでは install.sh の配布アセットへ追加しない。first-setup.sh の log_info、log_error、log_success は install.sh と templates/dev-tools.sh のラベル、絵文字、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けに従う。
+      status: "✅️Implementation Approved"
+      link: "records/dev-tools-001-optional-tool-installation.md"
+      sub_decisions: []
