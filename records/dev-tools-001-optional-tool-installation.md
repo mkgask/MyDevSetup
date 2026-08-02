@@ -466,3 +466,96 @@ Append rules:
 - Test result: brew-only route、`asdf` の後にbrewが現れる順序、global filtering、Python・Ruby・rg package mapping、通常install dispatch、planned command、interactive dry-run summary、副作用なしをfocused fixtureで確認した。`bash tests/dev-tools.test.sh` は14件、`bash tests/install.test.sh` は15件がpassした。
 - Validation evidence: 4ファイルのeditor diagnostics、全Bash対象の `bash -n`、`git diff --check`、decision ID uniquenessを確認した。top-level `install.sh` は変更していない。ShellCheckは環境に存在しないため未実行である。
 - Decision result: `installer-011-2-installation-backends`、`installer-011-8-install-method-selection`、`installer-011-14-global-install-scope`、`installer-011-21-dry-run-preview` を `✅️Implementation Approved` とした。実装により新たなbinding constraintは発生していない。
+
+### Entry 0045 (2026-08-02T00:00:06Z)
+- Why now: `status` currently reports each development tool's verified version and executable path, but it does not show whether the package-manager commands used by the installation routes are available, what versions they provide, or where they are installed. The user requested the package-manager side to be visible in the same status view.
+- Active baseline: The relevant contracts are `installer-011-2-installation-backends`, `installer-011-8-install-method-selection`, `installer-011-11-process-scoped-manager-activation`, `installer-011-13-logging-and-data-output`, `installer-011-17-failure-diagnostics`, and `installer-011-20-status-mode`. The current focused helper suite passes 14 tests.
+- Broad-scan findings:
+  - The route layer already names the concrete manager commands: system package-manager alternatives (`apt-get`, `dnf`, `yum`, `pacman`, `zypper`, `apk`), `nix`, `proto`, `mise`, `asdf`, `brew`, and `uv`.
+  - The existing tool status path already provides the required read-only primitives: `command -v` for the executable path and `--version` output parsing for the displayed version. Reusing that verification contract avoids package-database-specific behavior that would differ across distributions and managers.
+  - `official` is an installer route backed by `curl`, not a package manager, so it should not be represented as a package-manager row. `uv` is both a tracked development tool and the manager used for Serena; showing it in the package-manager section makes that dual role explicit even though its tool row remains unchanged.
+  - Package-manager availability is environmental information, not a required dependency for every run. Missing package managers must be displayed but must not change the existing status exit rule, which reflects unavailable development tools.
+- Focus areas:
+  - Add a status-only package-manager inventory using the same `present`/`unavailable`, version, path, and verification-detail format as tool rows.
+  - Keep the inventory read-only: no package queries, route selection, installation, manager activation, PATH mutation, AGENTS.md update, or project initialization.
+  - Render manager rows after the existing tool rows, preserve tool order and status exit semantics, and cover present, version-failed, and missing manager cases with focused mocks.
+- Explicit exclusions: Package database inspection (for example, whether a specific formula or distro package is installed), package ownership/path resolution, new manager routes, official installer status, live third-party manager commands, and changes to install/init/dry-run behavior are out of scope. The requested package-manager status means the manager executable's availability, version, and executable path.
+- Candidate direction: Add a concrete package-manager command list and a shared verified-command lookup so status can display each manager command in a separate `Package-manager status:` section. Keep manager failures informational and preserve `STATUS_UNAVAILABLE_COUNT` for development-tool rows only.
+- Current conclusion: The candidate direction satisfies the requested visibility with the smallest ownership change: status gains an additional read-only inventory while route selection and installation behavior remain unchanged. The manager list should use the same concrete command names as the existing route layer so displayed status and selectable routes cannot drift.
+- Next validation target: discussion-validation should confirm that manager-command inventory is the correct interpretation of package-manager-side status, that every listed command is safe to probe with `--version`, that manager absence does not alter the established status exit contract, and that the shared verification path preserves tool diagnostics.
+- Promotion to DECISIONS.yml: pending (update `installer-011-20-status-mode` and, if needed, `installer-011-17-failure-diagnostics` with the package-manager inventory and informational-failure boundary after validation).
+
+### Entry 0046 (2026-08-02T00:00:07Z)
+- Discussion-validation: The bounded scan covered the status verifier, route-specific manager names, install/dry-run dispatch, focused status tests, and the active read-only, failure-diagnostics, and exit-status contracts. It included the main omission risk: conflating manager executable status with distro-specific package database inspection.
+- Focus validation: A separate manager inventory section is justified because the route layer has concrete manager commands while a tool may have multiple possible routes. Using the same verified-command path keeps version/path semantics consistent and avoids making route selection or package metadata the responsibility of status.
+- Directional fit: Reporting manager executable availability, version, and path directly serves the request without changing the existing tool rows, route ordering, install/init behavior, or distribution boundary. Excluding `official`/`curl` is correct because it is an installer transport rather than a package manager.
+- Contract fit: Probing each manager with `command -v` and `--version` is read-only and does not perform manager capability queries that could mutate state. Manager rows may be `unavailable` without incrementing the development-tool unavailable count, so the existing status exit contract remains limited to tool availability. Existing command, exit-code, and verification-detail reporting remains applicable to both inventories.
+- Hidden bindings: The concrete manager list must remain synchronized with route-layer names, the manager section must not be treated as a second install target set, and package-manager absence must remain informational. These are implementation constraints and will be promoted into `installer-011-20-status-mode`; no separate decision object is needed.
+- Validation result: PASS. The candidate direction fits the original request and active invariants, and the focused implementation/test surface is clear.
+- Promotion targets: Update `installer-011-20-status-mode` with the read-only package-manager inventory, concrete route-manager list, shared version/path display, and informational manager failures. Keep `installer-011-17-failure-diagnostics` unchanged because its existing command and exit-code contract already covers the shared verifier.
+
+### Entry 0047 (2026-08-02T00:00:08Z)
+- Implementation result: `templates/dev-tools.sh` now shares the verified-command implementation between development tools and package-manager commands. In `status` mode it renders a separate `Package-manager status:` section for `apt-get`, `dnf`, `yum`, `pacman`, `zypper`, `apk`, `nix`, `proto`, `mise`, `asdf`, `brew`, and `uv`, showing `present` or `unavailable`, the parsed version, the executable path, and verification details.
+- Boundary result: Package-manager probing runs only in `status`, uses `command -v` and `--version`, and does not run package queries, route selection, installation, activation, PATH changes, AGENTS.md updates, or project initialization. Manager failures remain informational and do not change the existing development-tool status exit count.
+- Test result: The focused helper suite passes 14 tests, including manager present/version/path, version failure diagnostics, missing manager display, and successful status with an unavailable manager. The installer suite passes 15 tests, confirming distribution and delegation remain unchanged.
+- Validation evidence: Bash syntax checks, editor diagnostics for the changed helper/tests/decision/record, `git diff --check`, and a live Linux `status` run passed. The live output confirmed `python present 3.14.4 /usr/bin/python3` and `apt-get present 3.2.0 /usr/bin/apt-get`.
+- Decision result: `installer-011-20-status-mode` is ready to return to `✅️Implementation Approved`. No new binding constraint was discovered beyond the promoted manager inventory contract.
+
+### Entry 0048 (2026-08-02T00:00:09Z)
+- Implementation-validation: Executable validation, artifact alignment, and terminology alignment all pass. The manager names match the concrete route-layer commands, the display uses the existing `present`/`unavailable` and version/path format, and status still processes all tools before returning the established tool-based exit status.
+- Decision-record hygiene: `installer-011-20-status-mode` retains the link to this record and now contains the manager inventory, read-only boundary, display contract, and informational failure rule. `installer-011-17-failure-diagnostics` remains unchanged because the shared verifier already covers manager command and exit-code details.
+- Closeout result: PASS. No implementation blocker remains. Live third-party installation and package-database inspection were intentionally not performed because they are outside this status-only scope.
+
+### Entry 0049 (2026-08-02T00:00:10Z)
+- User refinement: In `status` output, show `Package-manager status:` before `Development-tool status:` so the available installation backends are visible before the tool results they support.
+- Implementation result: `print_status_summary` now renders the package-manager rows first. The focused status test asserts the heading order while preserving the existing row content and exit-status behavior.
+- Validation: `bash tests/dev-tools.test.sh` passes all 14 focused tests. The ordering refinement introduces no new side effects or decision scope.
+
+### Entry 0050 (2026-08-02T00:00:11Z)
+- User refinement: `uv` appears in both status sections because it is both a development tool and Serena's installation manager. The duplicate row is less clear than the role distinction it represents.
+- Decision: Do not add a third status layer for this case. Keep the manager inventory limited to manager-only commands and treat the `uv` tool row as the canonical availability/version/path status. Serena's `uv-tool` installation route remains unchanged.
+- Implementation result: Removed `uv` from `PACKAGE_MANAGER_NAMES` and added a focused assertion that the status output contains exactly one `uv` row.
+- Validation target: Re-run the helper status suite, syntax/diagnostic checks, and installer regression suite. Package metadata inspection and a manager-to-tool relationship section remain out of scope unless a later request needs that information.
+
+### Entry 0051 (2026-08-02T00:00:12Z)
+- Implementation-validation: `uv` is now displayed once in `Development-tool status:` while the manager-only inventory remains in `Package-manager status:`. No third status layer was introduced.
+- Validation result: The helper suite passes 14 tests, the installer suite passes 15 tests, Bash syntax checks pass, editor diagnostics report no errors, and the live status output contains exactly one `uv` row.
+- Closeout result: PASS. The `uv-tool` installation route and existing status exit semantics are unchanged. A manager-to-tool relationship section remains a future scope only if route provenance or package metadata needs to become user-facing.
+
+### Entry 0052 (2026-08-02T00:00:13Z)
+- Why now: In the current environment `curl` is not on `PATH`, so `./templates/dev-tools.sh --dry-run` reports `rtk`, `codegraph`, and `uv` as having no installation method even though their official installer URLs are embedded in the helper. The preview should show that URL-backed official route as the planned installation.
+- Active baseline: The relevant contracts are `installer-011-2-installation-backends`, `installer-011-5-failure-and-noninteractive-policy`, `installer-011-15-mode-selection`, and `installer-011-21-dry-run-preview`. `official_route_available` currently requires both a mapped installer URL and an executable `curl`; `planned_install_command_for_route` already renders the complete `curl ... | sh` pipeline without executing it.
+- Broad-scan findings:
+  - Official route identity comes from `official_installer_url_for_tool`, while `curl` is the execution transport. The preview only needs the former to describe the planned command; it performs no network or installer action.
+  - Normal install should continue requiring `curl` before exposing `official`, otherwise an interactive install could offer a route that cannot execute in the current environment and then fail with a missing transport.
+  - The non-interactive dry-run rule already permits configured default routes to be shown without performing installation. Treating URL-backed official routes as previewable is a narrow extension of that existing exception.
+- Focus areas:
+  - Make official route availability mode-aware: URL mapping is sufficient in `install --dry-run`, while normal install retains the `curl` prerequisite.
+  - Preserve the existing planned command, route order, `--global` behavior, no-network boundary, and actual install dispatch.
+  - Add a focused no-`curl` dry-run fixture that verifies `official` is planned for `rtk`, `codegraph`, and `uv`, while non-dry-run route filtering still excludes it.
+- Explicit exclusions: Automatically installing `curl`, executing official installers, changing official URLs, adding a new transport fallback, changing normal install prompts, and changing `Serena`'s `uv-tool` dependency are out of scope.
+- Candidate direction: When `DRY_RUN=1`, let `official_route_available` succeed from the existing URL mapping alone. Keep the current `curl` check for normal install. The existing planned command will expose the URL and pipeline as the preview detail.
+- Current conclusion: This is the smallest change that makes dry-run accurately describe the official route already encoded in the helper without claiming that the current environment can execute it. No extra status or relationship layer is needed.
+- Next validation target: discussion-validation should confirm that the mode-aware predicate preserves normal install safety, that no-`curl` dry-run previews all three URL-backed tools, and that preview remains side-effect-free and status 0.
+- Promotion to DECISIONS.yml: pending (update `installer-011-5-failure-and-noninteractive-policy` and `installer-011-21-dry-run-preview` with the URL-mapping-only official preview rule).
+
+### Entry 0053 (2026-08-02T00:00:14Z)
+- Discussion-validation: The bounded scan covered the official URL mapping, route availability predicate, dry-run planned-command generation, normal install dispatch, non-interactive policy, existing focused fixtures, and the active dry-run contract. It identified the key distinction between previewing an official command and being able to execute its `curl` transport.
+- Focus validation: A mode-aware official predicate is justified because the two modes have different obligations: dry-run describes a non-executing command, while normal install must offer only an executable route. The existing URL mapping and planned command provide a stable preview source without any additional network probe.
+- Directional fit: Previewing `official` for `rtk`, `codegraph`, and `uv` directly addresses the requested output and keeps the implementation inside `templates/dev-tools.sh`. The change does not alter route order, installer URLs, normal install behavior, or the `uv-tool` route for Serena.
+- Contract fit: The candidate preserves the dry-run no-install/no-network boundary, configured-default preview behavior, `--global` filtering, and preview status 0. It also preserves normal install's `curl` prerequisite, manager/plugin non-installation, and failure diagnostics.
+- Hidden bindings: The official route must remain URL-backed, the dry-run preview must not imply that `curl` is installed, and normal install must not expose an unusable official route. These are implementation constraints for the two existing decisions; no new decision object is needed.
+- Validation result: PASS. The candidate direction fits the request and active invariants, and the focused no-`curl` fixture can falsify both accidental normal-install relaxation and missing dry-run previews.
+- Promotion targets: Update `installer-011-5-failure-and-noninteractive-policy` and `installer-011-21-dry-run-preview` with the mode-aware official route rule, then implement and test the helper-only change.
+
+### Entry 0054 (2026-08-02T00:00:15Z)
+- Implementation result: `official_route_available` now treats the existing installer URL mapping as sufficient during `install --dry-run`, while normal install continues to require an executable `curl`. The existing `planned_install_command_for_route` output exposes the full official `curl ... | sh` command and URL without executing it.
+- Test result: Added a no-`curl` fixture covering `rtk`, `codegraph`, and `uv` official routes, their planned URLs, and normal-install exclusion. The helper suite passes 15 focused tests.
+- Live result: In the current environment, `./templates/dev-tools.sh --dry-run </dev/null` displays all three tools as `planned official` with their embedded URLs and returns status 0. No installer or network command ran.
+- Decision result: `installer-011-5-failure-and-noninteractive-policy` and `installer-011-21-dry-run-preview` are ready to return to `✅️Implementation Approved`.
+
+### Entry 0055 (2026-08-02T00:00:16Z)
+- Implementation-validation: The mode-aware predicate preserves normal installation safety and expands only the non-executing preview. Route order, `--global` filtering, official URL constants, planned command generation, no-network behavior, and existing install/init/status boundaries remain aligned.
+- Executable validation: Helper 15 tests, installer 15 tests, Bash syntax checks, editor diagnostics, and live no-`curl` dry-run verification all pass. The live preview returns 0 and shows URL-backed official plans for `rtk`, `codegraph`, and `uv`.
+- Decision-record hygiene: The active contracts now state the URL-mapping-only official preview rule, while the record retains the rationale and validation evidence. No new binding constraint remains.
+- Closeout result: PASS. Automatically installing `curl` or adding a transport fallback remains out of scope.

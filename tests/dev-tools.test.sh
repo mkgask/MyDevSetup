@@ -638,10 +638,55 @@ test_dry_run_planned_commands() {
 	assert_equal 'uv tool install -p 3.13 serena-agent' "$(planned_install_command_for_route serena uv-tool)" 'preview uv-tool command' || return 1
 }
 
+test_dry_run_official_routes_without_curl() {
+	local original_path="$PATH"
+	local no_curl_bin=""
+	local rtk_routes=""
+	local codegraph_routes=""
+	local uv_routes=""
+	local normal_rtk_routes=""
+	local rtk_planned_command=""
+	local codegraph_planned_command=""
+	local uv_planned_command=""
+
+	prepare_mock_environment dry-run-official-no-curl
+	no_curl_bin="$MOCK_ROOT/no-curl-bin"
+	mkdir -p "$no_curl_bin"
+	ln -s "$(command -v grep)" "$no_curl_bin/grep"
+	PATH="$MOCK_BIN:$no_curl_bin"
+	export PATH
+	source "$HELPER_PATH"
+
+	DRY_RUN=1
+	rtk_routes="$(available_routes_for_tool rtk)"
+	codegraph_routes="$(available_routes_for_tool codegraph)"
+	uv_routes="$(available_routes_for_tool uv)"
+	rtk_planned_command="$(planned_install_command_for_route rtk official)"
+	codegraph_planned_command="$(planned_install_command_for_route codegraph official)"
+	uv_planned_command="$(planned_install_command_for_route uv official)"
+
+	DRY_RUN=0
+	normal_rtk_routes="$(available_routes_for_tool rtk)"
+
+	PATH="$original_path"
+	export PATH
+
+	assert_equal $'official\nskip' "$rtk_routes" 'dry-run previews RTK official route without curl' || return 1
+	assert_equal $'official\nskip' "$codegraph_routes" 'dry-run previews CodeGraph official route without curl' || return 1
+	assert_equal $'official\nskip' "$uv_routes" 'dry-run previews uv official route without curl' || return 1
+	assert_contains 'rtk-ai/rtk' <(printf '%s\n' "$rtk_planned_command") 'preview RTK official URL without curl' || return 1
+	assert_contains 'colbymchenry/codegraph' <(printf '%s\n' "$codegraph_planned_command") 'preview CodeGraph official URL without curl' || return 1
+	assert_contains 'astral.sh/uv/install.sh' <(printf '%s\n' "$uv_planned_command") 'preview uv official URL without curl' || return 1
+	assert_equal 'skip' "$normal_rtk_routes" 'normal install keeps official route unavailable without curl' || return 1
+}
+
 test_status_mode() {
 	local output=""
 	local helper_status=0
 	local agents_snapshot=""
+	local package_manager_status_line=""
+	local tool_status_line=""
+	local uv_status_count=""
 
 	prepare_mock_environment status-unavailable
 	install_failed_tool_stubs
@@ -654,6 +699,13 @@ test_status_mode() {
 	write_mock_command "$MOCK_BIN/uv" \
 		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "uv 0.8.0"; exit 0; fi' \
 		'exit 1'
+	write_mock_command "$MOCK_BIN/apt-get" \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\\n" "apt 2.6.1"; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/brew" \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\\n" "Homebrew 4.5.0"; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/nix" 'exit 9'
 	agents_snapshot="$(mktemp)"
 	cp "$MOCK_AGENTS" "$agents_snapshot"
 
@@ -664,9 +716,22 @@ test_status_mode() {
 	fi
 	assert_equal '1' "$helper_status" 'status reports unavailable tools' || return 1
 	assert_contains 'Development-tool status:' "$MOCK_ROOT/output.log" 'status title' || return 1
+	package_manager_status_line="$(grep -n -m1 '^Package-manager status:$' "$MOCK_ROOT/output.log" | cut -d: -f1)"
+	tool_status_line="$(grep -n -m1 '^Development-tool status:$' "$MOCK_ROOT/output.log" | cut -d: -f1)"
+	if ! (( package_manager_status_line < tool_status_line )); then
+		fail_test 'package-manager status is displayed before tool status'
+		return 1
+	fi
 	assert_contains "python     present   3.13.5 $MOCK_BIN/python3" "$MOCK_ROOT/output.log" 'status reports python version and path' || return 1
 	assert_contains "ruby       present   3.4.1 $MOCK_BIN/ruby" "$MOCK_ROOT/output.log" 'status reports ruby version and path' || return 1
 	assert_contains "uv         present   0.8.0 $MOCK_BIN/uv" "$MOCK_ROOT/output.log" 'status reports uv version and path' || return 1
+	uv_status_count="$(grep -Ec '^  uv[[:space:]]+' "$MOCK_ROOT/output.log")"
+	assert_equal '1' "$uv_status_count" 'status reports uv only in the tool section' || return 1
+	assert_contains 'Package-manager status:' "$MOCK_ROOT/output.log" 'status title for package managers' || return 1
+	assert_contains "apt-get    present   2.6.1 $MOCK_BIN/apt-get" "$MOCK_ROOT/output.log" 'status reports package manager version and path' || return 1
+	assert_contains "brew       present   4.5.0 $MOCK_BIN/brew" "$MOCK_ROOT/output.log" 'status reports brew version and path' || return 1
+	assert_contains 'nix        unavailable' "$MOCK_ROOT/output.log" 'status reports package manager version failure' || return 1
+	assert_contains 'command: nix --version' "$MOCK_ROOT/output.log" 'status preserves package manager diagnostics' || return 1
 	assert_contains 'rg         unavailable' "$MOCK_ROOT/output.log" 'status reports unavailable rg' || return 1
 	assert_contains 'rtk        unavailable' "$MOCK_ROOT/output.log" 'status reports version failure' || return 1
 	assert_contains 'codegraph  unavailable' "$MOCK_ROOT/output.log" 'status reports missing codegraph' || return 1
@@ -692,6 +757,7 @@ test_status_mode() {
 			'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
 			'exit 1'
 	done
+	write_mock_command "$MOCK_BIN/apt-get" 'exit 1'
 	agents_snapshot="$(mktemp)"
 	cp "$MOCK_AGENTS" "$agents_snapshot"
 
@@ -702,7 +768,14 @@ test_status_mode() {
 	fi
 	assert_equal '0' "$helper_status" 'status succeeds when all tools are available' || return 1
 	assert_contains 'Development-tool status:' "$MOCK_ROOT/output.log" 'status title for available tools' || return 1
-	assert_not_contains 'unavailable' "$MOCK_ROOT/output.log" 'status has no unavailable tools' || return 1
+	assert_contains 'apt-get    unavailable' "$MOCK_ROOT/output.log" 'manager absence is informational' || return 1
+	assert_not_contains 'python     unavailable' "$MOCK_ROOT/output.log" 'python is available' || return 1
+	assert_not_contains 'ruby       unavailable' "$MOCK_ROOT/output.log" 'ruby is available' || return 1
+	assert_not_contains 'rg         unavailable' "$MOCK_ROOT/output.log" 'rg is available' || return 1
+	assert_not_contains 'rtk        unavailable' "$MOCK_ROOT/output.log" 'rtk is available' || return 1
+	assert_not_contains 'codegraph  unavailable' "$MOCK_ROOT/output.log" 'codegraph is available' || return 1
+	assert_not_contains 'uv         unavailable' "$MOCK_ROOT/output.log" 'uv is available' || return 1
+	assert_not_contains 'serena     unavailable' "$MOCK_ROOT/output.log" 'Serena is available' || return 1
 	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'successful status changed AGENTS.md' || return 1
 	rm -f "$agents_snapshot"
 }
@@ -831,6 +904,7 @@ run_test 'default routes and skip selection' test_default_route_and_skip_selecti
 run_test 'mode parsing and logging' test_mode_parsing_and_logging
 run_test 'dry-run mode' test_dry_run_mode
 run_test 'dry-run planned commands' test_dry_run_planned_commands
+run_test 'dry-run official routes without curl' test_dry_run_official_routes_without_curl
 run_test 'status mode' test_status_mode
 run_test 'project initialization mode' test_project_init_mode
 

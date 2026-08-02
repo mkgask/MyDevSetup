@@ -255,6 +255,7 @@ decisions:
           decision: >
             install の空入力はそのツールに設定された既定導入方法を選択し、TTYがない実行では任意ツールをスキップする。
             ただし install --dry-run は導入を実行しないpreviewであるため、TTYがない場合も利用可能なconfigured default routeを表示する。
+            dry-runのofficial routeは対象ツールの既存installer URL mappingがあればpreview候補とし、現在のcurl実行可能性を要求しない。通常installのofficial routeはcurlが検出できる場合だけ候補にする。
             init は明示指定自体を同意とみなし、ツールごとの追加確認を行わず、利用可能で初期設定が必要なツールだけを処理する。
             install と init の個別失敗では後続ツールを継続し、処理末尾に成功・失敗・スキップをまとめて表示する。
           status: "✅️Implementation Approved"
@@ -379,6 +380,7 @@ decisions:
           decision: >
             status は対象ツールの現在状態を表示する読み取り専用モードとし、現在の対象順で全ツールに対して既存の `find_tool_command` による実行可能性と `--version` 検証だけを行う。検証成功は `present`、検出またはversion検証が完了しない対象は `unavailable` とし、検証コマンド・終了コードを結果詳細へ残す。
             status はprompt、install、init、project設定、AGENTS.md更新、永続的なPATH・manager・agent設定を行わず、全対象を処理してからsummaryの結果行を表示する。1件でも `unavailable` があれば、summary表示後に補助スクリプト全体の終了statusを1とする。
+            status は既存のroute層で扱うmanager-onlyの具体的なパッケージマネージャー実行ファイル（`apt-get`、`dnf`、`yum`、`pacman`、`zypper`、`apk`、`nix`、`proto`、`mise`、`asdf`、`brew`）を別の `Package-manager status:` セクションへ同じ `present`／`unavailable`、`--version` からのversion、`command -v` の実行パス形式で表示する。表示順は `Package-manager status:` を先にし、その後に `Development-tool status:` を表示する。`uv` のようにtoolとmanagerの両方を担うコマンドはtool側の行をcanonicalな状態表示とし、manager側へ重複表示しない。managerの不在またはversion検証失敗は情報表示として扱い、開発用ツールの `unavailable` 件数とstatus全体の終了statusには加算しない。manager inventoryは検出だけを行い、package query、導入、route選択、manager activation、PATH変更、AGENTS.md・project設定変更を行わない。
             `summary` はstatusの公開aliasにせず、`status --global` は引数エラーとする。`--debug` はstatusのversion検証traceに限り利用でき、Linux/WSL判定と現在プロセス内のPATH準備は既存契約を維持する。
           status: "✅️Implementation Approved"
           link: "records/dev-tools-001-optional-tool-installation.md"
@@ -389,7 +391,7 @@ decisions:
             `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序（system、nix、proto、mise、asdf、brew、official、uv-tool、skip）、
             `--global`候補制限、interactive時の一回のroute選択だけを行い、実際の導入を開始しない読み取りpreviewとする。
             既存ツールは `present` として再導入せず、不足ツールは選択またはTTYなし時のconfigured default routeを `planned` として表示する。利用可能な導入経路がない、または `skip` が選ばれた対象は `skip` と表示する。
-            各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。system package manager、nix、proto、mise、asdf、brew、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。
+            各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。official routeは対象ツールの既存installer URL mappingを根拠にplanned commandを表示し、curlの現在の実行可能性はpreview候補の条件にしない。system package manager、nix、proto、mise、asdf、brew、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。
             preview対象を最後まで処理し、preview結果を表示できれば終了statusは0とする。引数エラーまたはplanned command生成自体の失敗は非0とする。`--global` は既存のglobal install scopeをroute候補とplanned commandへ適用し、`--debug` は実行されないinstall commandのtraceを追加せず、表示されたplanned detailを診断情報とする。
           status: "✅️Implementation Approved"
           link: "records/dev-tools-001-optional-tool-installation.md"

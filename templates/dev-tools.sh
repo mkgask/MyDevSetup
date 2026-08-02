@@ -6,6 +6,7 @@ set -euo pipefail
 # Foundation State
 
 TOOL_NAMES=(python ruby rg rtk codegraph uv serena)
+PACKAGE_MANAGER_NAMES=(apt-get dnf yum pacman zypper apk nix proto mise asdf brew)
 
 declare -A TOOL_COMMANDS=(
 	[python]="python3"
@@ -19,6 +20,8 @@ declare -A TOOL_COMMANDS=(
 
 declare -A TOOL_RESULTS=()
 declare -A TOOL_RESULT_DETAILS=()
+declare -A PACKAGE_MANAGER_RESULTS=()
+declare -A PACKAGE_MANAGER_RESULT_DETAILS=()
 declare -A NEW_TOOL_COMMANDS=()
 TOOL_FAILURE_COUNT=0
 STATUS_UNAVAILABLE_COUNT=0
@@ -205,8 +208,9 @@ extract_version_value() {
 	return 0
 }
 
-find_tool_command() {
-	local tool_name="$1"
+find_verified_command() {
+	local candidate_function="$1"
+	local candidate_name="$2"
 	local command_name=""
 	local command_path=""
 	local verification_status=0
@@ -247,9 +251,21 @@ find_tool_command() {
 			LAST_VERIFICATION_DETAILS+='; '
 		fi
 		LAST_VERIFICATION_DETAILS+="command: $verification_command (exit status $verification_status; $verification_reason)"
-	done < <(tool_command_candidates "$tool_name")
+	done < <("$candidate_function" "$candidate_name")
 
 	return 1
+}
+
+find_tool_command() {
+	find_verified_command tool_command_candidates "$1"
+}
+
+package_manager_command_candidates() {
+	printf '%s\n' "$1"
+}
+
+find_package_manager_command() {
+	find_verified_command package_manager_command_candidates "$1"
 }
 
 format_present_tool_detail() {
@@ -499,8 +515,12 @@ official_installer_url_for_tool() {
 official_route_available() {
 	local tool_name="$1"
 
-	command -v curl >/dev/null 2>&1 || return 1
-	official_installer_url_for_tool "$tool_name" >/dev/null
+	official_installer_url_for_tool "$tool_name" >/dev/null || return 1
+	if [[ "${DRY_RUN:-0}" -eq 1 ]]; then
+		return 0
+	fi
+
+	command -v curl >/dev/null 2>&1
 }
 
 uv_tool_package_for_tool() {
@@ -1171,6 +1191,25 @@ process_status_tool() {
 	STATUS_UNAVAILABLE_COUNT=$((STATUS_UNAVAILABLE_COUNT + 1))
 }
 
+process_package_manager_status() {
+	local manager_name=""
+	local status_detail=""
+	local verification_detail=""
+
+	for manager_name in "${PACKAGE_MANAGER_NAMES[@]}"; do
+		if find_package_manager_command "$manager_name"; then
+			status_detail="$(format_present_tool_detail "$FOUND_TOOL_VERSION" "$FOUND_TOOL_PATH")"
+			PACKAGE_MANAGER_RESULTS["$manager_name"]="present"
+			PACKAGE_MANAGER_RESULT_DETAILS["$manager_name"]="$status_detail"
+			continue
+		fi
+
+		verification_detail="${LAST_VERIFICATION_DETAILS:-unknown command verification failure}"
+		PACKAGE_MANAGER_RESULTS["$manager_name"]="unavailable"
+		PACKAGE_MANAGER_RESULT_DETAILS["$manager_name"]="$verification_detail"
+	done
+}
+
 process_tool() {
 	case "$DEV_TOOLS_MODE" in
 	init)
@@ -1321,6 +1360,18 @@ print_summary_rows() {
 	done
 }
 
+print_package_manager_status_rows() {
+	local manager_name=""
+	local result_name=""
+	local result_detail=""
+
+	for manager_name in "${PACKAGE_MANAGER_NAMES[@]}"; do
+		result_name="${PACKAGE_MANAGER_RESULTS[$manager_name]:-unavailable}"
+		result_detail="${PACKAGE_MANAGER_RESULT_DETAILS[$manager_name]:-not processed}"
+		printf '  %-10s %-9s %s\n' "$manager_name" "$result_name" "$result_detail"
+	done
+}
+
 print_summary() {
 	if [[ "$DRY_RUN" -eq 1 ]]; then
 		printf '\n%s\n' 'Development-tool dry-run:'
@@ -1331,6 +1382,8 @@ print_summary() {
 }
 
 print_status_summary() {
+	printf '\n%s\n' 'Package-manager status:'
+	print_package_manager_status_rows
 	printf '\n%s\n' 'Development-tool status:'
 	print_summary_rows
 }
@@ -1412,10 +1465,16 @@ main() {
 
 	TOOL_FAILURE_COUNT=0
 	STATUS_UNAVAILABLE_COUNT=0
+	PACKAGE_MANAGER_RESULTS=()
+	PACKAGE_MANAGER_RESULT_DETAILS=()
 	prepare_known_tool_paths
 	for tool_name in "${TOOL_NAMES[@]}"; do
 		process_tool "$tool_name"
 	done
+
+	if [[ "$DEV_TOOLS_MODE" == "status" ]]; then
+		process_package_manager_status
+	fi
 
 	if [[ "$DEV_TOOLS_MODE" == "install" && "$DRY_RUN" -eq 0 ]]; then
 		if ! update_agents_managed_block; then
