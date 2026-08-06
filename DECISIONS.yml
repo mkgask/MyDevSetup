@@ -202,8 +202,9 @@ decisions:
           sub_decisions: []
         - id: installer-012-3-helper-overwrite-exception
           decision: >
-            `.dev/dev-tools.sh` は installer-011-9 の既存契約どおり常に上書きし、`--overwrite no` でもこの helper の更新を抑止しない。
+            `dev-tools.sh` と同じ選択済み配置先に置く `first-setup.sh` も、installer-011-9 の既存契約どおり常に上書きし、`--overwrite no` でもこれら helper の更新を抑止しない。
           status: "✅️Implementation Approved"
+          link: "records/first-setup-002-installer-deployment.md"
           sub_decisions: []
 
 
@@ -456,7 +457,17 @@ decisions:
         開発ツール自体、shell起動ファイル、PATH、manager設定は変更しない。usage/info/success では個別ツール名を表示しない。
         apt-get が利用できない、または非root環境でsudoが利用できない場合は明示的なエラーで終了し、他のpackage managerへフォールバックしない。
         first-setup.sh は templates/dev-tools.sh の隣に置く手動実行用テンプレートとし、対応するfocused testは tests/first-setup.test.sh に置く。
-        初期スコープでは install.sh の配布アセットへ追加しない。first-setup.sh の log_info、log_error、log_success は install.sh と templates/dev-tools.sh のラベル、絵文字、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けに従う。
+        install.sh での配布先と配布時の扱いは installer-011-23-first-setup-deployment に定め、自動実行はしない。
+        first-setup.sh の log_info、log_error、log_success は install.sh と templates/dev-tools.sh のラベル、絵文字、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けに従う。
       status: "✅️Implementation Approved"
-      link: "records/first-setup-001-generic-dependencies.md"
+      link: "records/first-setup-002-installer-deployment.md"
+      sub_decisions: []
+
+    - id: installer-011-23-first-setup-deployment
+      decision: >
+        install.sh は templates/first-setup.sh を配布アセットとして扱い、templates/dev-tools.sh と同じ選択済み配置ディレクトリへ first-setup.sh をコピーする。
+        既定の配置先は対象プロジェクトの .dev/first-setup.sh とし、既存の .dev/ ディレクトリで利用者が別の配置先を選んだ場合も同じディレクトリへ配置する。
+        first-setup.sh は配布後に自動実行せず、手動実行用アセットとして残す。配布アセット定義は既存の source path / destination path / asset name の3要素リストとループを利用する。
+      status: "✅️Implementation Approved"
+      link: "records/first-setup-002-installer-deployment.md"
       sub_decisions: []

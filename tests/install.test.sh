@@ -144,9 +144,14 @@ prepare_fixture() {
 	cp "$PROJECT_DIRECTORY/install.sh" "$SOURCE_ROOT/install.sh"
 	cp "$PROJECT_DIRECTORY/templates/AGENTS.md" "$SOURCE_ROOT/templates/AGENTS.md"
 	cp "$PROJECT_DIRECTORY/templates/dev-tools.sh" "$SOURCE_ROOT/templates/dev-tools.sh"
+	cp "$PROJECT_DIRECTORY/templates/first-setup.sh" "$SOURCE_ROOT/templates/first-setup.sh"
 	cp "$PROJECT_DIRECTORY/templates/.docs/PRINCIPLES.md" "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md"
 
 	: > "$DODKIT_LOG"
+	FIRST_SETUP_EXECUTION_MARKER="$FIXTURE_ROOT/first-setup-executed"
+	write_mock_command "$SOURCE_ROOT/templates/first-setup.sh" \
+		'printf "first-setup-ran\n" > "$FIRST_SETUP_EXECUTION_MARKER"' \
+		'exit 77'
 
 	write_mock_command "$FIXTURE_ROOT/dodkit.sh" \
 		'printf "DODKIT_RAN\n"' \
@@ -162,7 +167,7 @@ prepare_fixture() {
 			'exit 0'
 	done
 
-	export FIXTURE_ROOT SOURCE_ROOT TARGET_ROOT MOCK_BIN MOCK_HOME DODKIT_LOG OUTPUT_LOG
+	export FIXTURE_ROOT SOURCE_ROOT TARGET_ROOT MOCK_BIN MOCK_HOME DODKIT_LOG OUTPUT_LOG FIRST_SETUP_EXECUTION_MARKER
 }
 
 run_installer_noninteractive() {
@@ -185,7 +190,10 @@ test_default_helper_deployment_and_dodkit_order() {
 	[[ -f "$TARGET_ROOT/AGENTS.md" ]] || fail_test 'AGENTS.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper was not deployed' || return 1
+	[[ -f "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup helper was not deployed' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
+	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'first-setup helper content was not copied' || return 1
+	[[ ! -e "$FIRST_SETUP_EXECUTION_MARKER" ]] || fail_test 'first-setup helper should not run automatically' || return 1
 
 	assert_contains 'copilot' "$DODKIT_LOG" 'forward DODKit target argument' || return 1
 	assert_contains '--custom-flag' "$DODKIT_LOG" 'forward DODKit custom argument' || return 1
@@ -203,12 +211,14 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 	local existing_agents='# user-owned AGENTS.md'
 	local existing_principles='# user-owned PRINCIPLES.md'
 	local existing_helper='# stale helper'
+	local existing_first_setup='# stale first-setup'
 
 	prepare_fixture protected-assets
 	mkdir -p "$TARGET_ROOT/.dev" "$TARGET_ROOT/.docs"
 	printf '%s\n' "$existing_agents" > "$TARGET_ROOT/AGENTS.md"
 	printf '%s\n' "$existing_principles" > "$TARGET_ROOT/.docs/PRINCIPLES.md"
 	printf '%s\n' "$existing_helper" > "$TARGET_ROOT/.dev/dev-tools.sh"
+	printf '%s\n' "$existing_first_setup" > "$TARGET_ROOT/.dev/first-setup.sh"
 
 	(
 		cd "$TARGET_ROOT"
@@ -218,6 +228,7 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 	cmp -s "$SOURCE_ROOT/templates/AGENTS.md" "$TARGET_ROOT/AGENTS.md" || fail_test 'default ask policy should update AGENTS.md without a TTY' || return 1
 	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'default ask policy should update PRINCIPLES.md without a TTY' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
+	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'default ask policy should update first-setup.sh without a TTY' || return 1
 	assert_contains 'using default helper directory: .dev' "$OUTPUT_LOG" 'use default destination without a TTY' || return 1
 }
 
@@ -239,6 +250,7 @@ test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 	assert_contains "$existing_agents" "$TARGET_ROOT/AGENTS.md" 'overwrite=no should preserve AGENTS.md' || return 1
 	assert_contains "$existing_principles" "$TARGET_ROOT/.docs/PRINCIPLES.md" 'overwrite=no should preserve PRINCIPLES.md' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh" || fail_test 'overwrite=no should not suppress unconditional helper updates' || return 1
+	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'overwrite=no should not suppress first-setup helper updates' || return 1
 	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
 	assert_contains 'no' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
 }
@@ -284,7 +296,9 @@ test_existing_dev_directory_destination_prompt() {
 	)
 
 	[[ -f "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected helper destination was not used' || return 1
+	[[ -f "$TARGET_ROOT/.custom-tools/first-setup.sh" ]] || fail_test 'selected first-setup destination was not used' || return 1
 	[[ ! -e "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper destination was used despite selection' || return 1
+	[[ ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'default first-setup destination was used despite selection' || return 1
 }
 
 test_helper_failure_status_is_reported() {

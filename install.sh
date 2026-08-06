@@ -13,6 +13,7 @@ SOURCE_TEMPLATE_URL_BASE="https://raw.githubusercontent.com"
 
 DODKIT_INSTALLER_URL="https://raw.githubusercontent.com/mkgask/dodkit/main/install.sh"
 DEV_TOOLS_SOURCE_TEMPLATE_PATH="templates/dev-tools.sh"
+FIRST_SETUP_SOURCE_TEMPLATE_PATH="templates/first-setup.sh"
 DEV_TOOLS_DEFAULT_DIRECTORY=".dev"
 DEV_TOOLS_HELPER_PATH=""
 
@@ -20,6 +21,7 @@ DEPLOYMENT_ASSET_SPECS=(
 	"templates/AGENTS.md|AGENTS.md|AGENTS.md"
 	"templates/.docs/PRINCIPLES.md|.docs/PRINCIPLES.md|PRINCIPLES.md"
 	"templates/dev-tools.sh|.dev/dev-tools.sh|dev-tools.sh"
+	"templates/first-setup.sh|.dev/first-setup.sh|first-setup.sh"
 )
 
 print_usage() {
@@ -271,7 +273,7 @@ install_template_asset() {
 	local temporary_file=""
 	local allows_unconditional_overwrite=0
 
-	if [[ "$source_template_path" == "$DEV_TOOLS_SOURCE_TEMPLATE_PATH" ]]; then
+	if [[ "$source_template_path" == "$DEV_TOOLS_SOURCE_TEMPLATE_PATH" || "$source_template_path" == "$FIRST_SETUP_SOURCE_TEMPLATE_PATH" ]]; then
 		allows_unconditional_overwrite=1
 	fi
 
@@ -359,6 +361,7 @@ select_dev_tools_destination() {
 	mkdir -p "$destination_directory"
 	DEV_TOOLS_HELPER_PATH="$destination_path"
 	DEPLOYMENT_ASSET_SPECS[2]="$DEV_TOOLS_SOURCE_TEMPLATE_PATH|$DEV_TOOLS_HELPER_PATH|dev-tools.sh"
+	DEPLOYMENT_ASSET_SPECS[3]="$FIRST_SETUP_SOURCE_TEMPLATE_PATH|$destination_directory/first-setup.sh|first-setup.sh"
 }
 
 run_dev_tools_helper() {
