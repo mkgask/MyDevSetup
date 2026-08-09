@@ -43,6 +43,19 @@ assert_not_contains() {
 	fi
 }
 
+assert_rw_permissions_unchanged() {
+	local expected_permissions="$1"
+	local file_path="$2"
+	local description="$3"
+	local actual_permissions=""
+
+	actual_permissions="$(stat -c '%A' "$file_path")"
+	if [[ "${actual_permissions:1:2}" != "${expected_permissions:1:2}" || "${actual_permissions:4:2}" != "${expected_permissions:4:2}" || "${actual_permissions:7:2}" != "${expected_permissions:7:2}" ]]; then
+		fail_test "$description (expected rw bits from $expected_permissions, got $actual_permissions)"
+		return 1
+	fi
+}
+
 test_parse_args_accepts_overwrite_policy_and_preserves_passthrough() {
 	parse_args copilot --overwrite yes --custom-flag value
 
@@ -203,6 +216,10 @@ test_default_helper_deployment_and_dodkit_order() {
 	[[ -f "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup helper was not deployed' || return 1
+	[[ -x "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'deployed dev-tools helper should be executable' || return 1
+	[[ -x "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'deployed first-setup helper should be executable' || return 1
+	[[ ! -x "$TARGET_ROOT/AGENTS.md" ]] || fail_test 'AGENTS.md should remain non-executable' || return 1
+	[[ ! -x "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md should remain non-executable' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
 	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'first-setup helper content was not copied' || return 1
 	[[ ! -e "$FIRST_SETUP_EXECUTION_MARKER" ]] || fail_test 'first-setup helper should not run automatically' || return 1
@@ -217,6 +234,42 @@ test_default_helper_deployment_and_dodkit_order() {
 	if ! (( dodkit_line < helper_line )); then
 		fail_test 'helper ran before DODKit'
 	fi
+}
+
+
+test_current_helpers_are_made_executable_on_reinstall() {
+	local dev_tools_permissions=""
+	local first_setup_permissions=""
+	local agents_permissions=""
+	local principles_permissions=""
+
+	prepare_fixture current-helper-permissions
+
+	(
+		cd "$TARGET_ROOT"
+		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot </dev/null > "$OUTPUT_LOG" 2>&1
+	)
+
+	chmod 0640 "$TARGET_ROOT/.dev/dev-tools.sh"
+	chmod 0604 "$TARGET_ROOT/.dev/first-setup.sh"
+	chmod 0640 "$TARGET_ROOT/AGENTS.md"
+	chmod 0604 "$TARGET_ROOT/.docs/PRINCIPLES.md"
+	dev_tools_permissions="$(stat -c '%A' "$TARGET_ROOT/.dev/dev-tools.sh")"
+	first_setup_permissions="$(stat -c '%A' "$TARGET_ROOT/.dev/first-setup.sh")"
+	agents_permissions="$(stat -c '%A' "$TARGET_ROOT/AGENTS.md")"
+	principles_permissions="$(stat -c '%A' "$TARGET_ROOT/.docs/PRINCIPLES.md")"
+
+	(
+		cd "$TARGET_ROOT"
+		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot </dev/null > "$OUTPUT_LOG" 2>&1
+	)
+
+	[[ -x "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'reinstall should restore dev-tools executable permission' || return 1
+	[[ -x "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'reinstall should restore first-setup executable permission' || return 1
+	assert_rw_permissions_unchanged "$dev_tools_permissions" "$TARGET_ROOT/.dev/dev-tools.sh" 'reinstall should preserve dev-tools rw permissions' || return 1
+	assert_rw_permissions_unchanged "$first_setup_permissions" "$TARGET_ROOT/.dev/first-setup.sh" 'reinstall should preserve first-setup rw permissions' || return 1
+	assert_rw_permissions_unchanged "$agents_permissions" "$TARGET_ROOT/AGENTS.md" 'reinstall should preserve AGENTS.md permissions' || return 1
+	assert_rw_permissions_unchanged "$principles_permissions" "$TARGET_ROOT/.docs/PRINCIPLES.md" 'reinstall should preserve PRINCIPLES.md permissions' || return 1
 }
 
 test_helper_receives_selected_target() {
@@ -335,6 +388,8 @@ test_existing_dev_directory_destination_prompt() {
 
 	[[ -f "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected helper destination was not used' || return 1
 	[[ -f "$TARGET_ROOT/.custom-tools/first-setup.sh" ]] || fail_test 'selected first-setup destination was not used' || return 1
+	[[ -x "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected dev-tools helper should be executable' || return 1
+	[[ -x "$TARGET_ROOT/.custom-tools/first-setup.sh" ]] || fail_test 'selected first-setup helper should be executable' || return 1
 	[[ ! -e "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper destination was used despite selection' || return 1
 	[[ ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'default first-setup destination was used despite selection' || return 1
 }
@@ -396,6 +451,7 @@ run_test 'overwrite parser rejects missing values' test_parse_args_rejects_missi
 run_test 'overwrite policy honors explicit values' test_should_overwrite_honors_explicit_policies
 run_test 'interactive overwrite all switches remaining files' test_interactive_overwrite_all_switches_remaining_files_to_yes
 run_test 'default overwrite updates assets and helper' test_existing_assets_updated_by_default_and_helper_overwritten
+run_test 'reinstall restores helper executable permissions' test_current_helpers_are_made_executable_on_reinstall
 run_test 'overwrite=no preserves local assets' test_overwrite_no_preserves_local_assets_and_forwards_policy
 run_test 'overwrite=yes updates local assets' test_overwrite_yes_updates_local_assets_and_forwards_policy
 run_test 'legacy force option is forwarded to DODKit' test_legacy_force_is_forwarded_to_dodkit

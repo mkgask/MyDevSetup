@@ -271,6 +271,15 @@ ensure_parent_directory_exists() {
 	mkdir -p "$parent_directory"
 }
 
+set_asset_permissions() {
+	local source_template_path="$1"
+	local destination_path="$2"
+
+	if [[ "$source_template_path" == "$DEV_TOOLS_SOURCE_TEMPLATE_PATH" || "$source_template_path" == "$FIRST_SETUP_SOURCE_TEMPLATE_PATH" ]]; then
+		chmod +x "$destination_path"
+	fi
+}
+
 install_template_asset() {
 	local source_template_path="$1"
 	local destination_path="$2"
@@ -297,6 +306,7 @@ install_template_asset() {
 	if [[ -f "$destination_path" ]]; then
 
 		if cmp -s "$temporary_file" "$destination_path"; then
+			set_asset_permissions "$source_template_path" "$destination_path"
 			rm -f "$temporary_file"
 			log_info "$asset_name is already up-to-date"
 			return 0
@@ -311,7 +321,7 @@ install_template_asset() {
 
 	ensure_parent_directory_exists "$destination_path"
 	cp "$temporary_file" "$destination_path"
-	chmod 0644 "$destination_path"
+	set_asset_permissions "$source_template_path" "$destination_path"
 	rm -f "$temporary_file"
 	log_success "Installed: $destination_path"
 }
@@ -404,6 +414,7 @@ main() {
 	require_command "mktemp"
 	require_command "cmp"
 	require_command "cp"
+	require_command "chmod"
 	require_command "dirname"
 	require_command "mkdir"
 

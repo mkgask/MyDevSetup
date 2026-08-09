@@ -468,6 +468,14 @@ decisions:
           link: "records/dev-tools-001-optional-tool-installation.md"
           sub_decisions: []
 
+        - id: installer-011-24-executable-helper-deployment
+          decision: >
+            install.sh は配布後に直接実行できるよう、`templates/dev-tools.sh` と `templates/first-setup.sh` に対応する配置先ファイルへ内容の新規コピー時と同一内容による早期完了時の両方で `chmod +x` のみを適用し、既存の rw permission を変更しない。
+            それ以外の配布アセット（AGENTS.md、PRINCIPLES.md）の permission は変更せず、first-setup.sh の自動実行、shell起動ファイル・PATH変更、DODKitとhelperの処理順序は変更しない。
+          status: "✅️Implementation Approved"
+          link: "records/installer-002-executable-helper-assets.md"
+          sub_decisions: []
+
   first-setup:
     - id: installer-011-22-first-setup-dependencies
       decision: >
