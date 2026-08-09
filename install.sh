@@ -4,6 +4,7 @@ set -euo pipefail
 
 OVERWRITE_POLICY="ask"
 SHOW_HELP=0
+TARGET_CLI="copilot"
 
 PASSTHROUGH_ARGS=()
 
@@ -168,12 +169,16 @@ parse_args() {
 
 	OVERWRITE_POLICY="ask"
 	SHOW_HELP=0
+	TARGET_CLI="copilot"
 	PASSTHROUGH_ARGS=("$@")
 
 	while [[ "$argument_index" -lt "$#" ]]; do
 		argument="${PASSTHROUGH_ARGS[$argument_index]}"
 
 		case "$argument" in
+			copilot|cursor)
+				TARGET_CLI="$argument"
+				;;
 			--overwrite)
 				if [[ "$((argument_index + 1))" -ge "$#" ]]; then
 					die "--overwrite requires a value: yes or no."
@@ -369,7 +374,7 @@ run_dev_tools_helper() {
 
 	log_info "Running optional development-tools helper"
 
-	if DEV_TOOLS_AGENTS_PATH="AGENTS.md" bash "$DEV_TOOLS_HELPER_PATH"; then
+	if DEV_TOOLS_AGENTS_PATH="AGENTS.md" bash "$DEV_TOOLS_HELPER_PATH" --agent "$TARGET_CLI"; then
 		return 0
 	else
 		helper_status="$?"

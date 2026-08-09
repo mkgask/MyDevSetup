@@ -30,9 +30,14 @@ bash .dev/dev-tools.sh install --dry-run
 # 不足しているツールを導入
 bash .dev/dev-tools.sh install
 
-# 現在のプロジェクトを初期化
+# 現在のプロジェクトを Copilot 向けに初期化
 bash .dev/dev-tools.sh init
+
+# Cursor 向けに初期化する場合
+bash .dev/dev-tools.sh init --agent cursor
 ```
+
+`init` の対象は `--agent copilot|cursor` で指定できます。省略時は Copilot です。Cursor 向けに導入した場合は、init 実行時にも `--agent cursor` を指定してください。
 
 ### 対象ツール
 

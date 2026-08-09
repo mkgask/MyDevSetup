@@ -510,6 +510,7 @@ test_mode_parsing_and_logging() {
 		fail_test 'debug and global flags were rejected'
 		return 1
 	fi
+	assert_equal 'copilot' "$DEV_TOOLS_AGENT" 'agent defaults to Copilot' || return 1
 	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state' || return 1
 	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state with debug' || return 1
 
@@ -518,11 +519,12 @@ test_mode_parsing_and_logging() {
 	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state' || return 1
 	assert_equal '0' "$DEBUG_ENABLED" 'debug flag resets between parses' || return 1
 
-	if ! parse_args init --debug; then
-		fail_test 'debug flag was rejected for init mode'
+	if ! parse_args init --agent cursor --debug; then
+		fail_test 'agent and debug flags were rejected for init mode'
 		return 1
 	fi
 	assert_equal 'init' "$DEV_TOOLS_MODE" 'init mode with debug flag' || return 1
+	assert_equal 'cursor' "$DEV_TOOLS_AGENT" 'init target accepts Cursor' || return 1
 	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state for init mode' || return 1
 
 	if ! parse_args status --debug; then
@@ -530,6 +532,7 @@ test_mode_parsing_and_logging() {
 		return 1
 	fi
 	assert_equal 'status' "$DEV_TOOLS_MODE" 'status mode with debug flag' || return 1
+	assert_equal 'copilot' "$DEV_TOOLS_AGENT" 'agent resets to the default for each parse' || return 1
 	assert_equal '1' "$DEBUG_ENABLED" 'debug flag state for status mode' || return 1
 
 	if ! parse_args install --dry-run --global --debug; then
@@ -539,6 +542,14 @@ test_mode_parsing_and_logging() {
 	assert_equal 'install' "$DEV_TOOLS_MODE" 'dry-run install mode' || return 1
 	assert_equal '1' "$DRY_RUN" 'dry-run flag state' || return 1
 	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state with dry-run' || return 1
+
+	if parse_args init --agent unsupported; then
+		fail_test 'unsupported agent target was accepted'
+		return 1
+	else
+		parse_status="$?"
+	fi
+	assert_equal '2' "$parse_status" 'unsupported agent target parse status' || return 1
 
 	if parse_args init --dry-run; then
 		fail_test 'init --dry-run was accepted'
@@ -575,7 +586,7 @@ test_mode_parsing_and_logging() {
 	assert_equal '[❌️ERROR] error' "$error_output" 'error log contract' || return 1
 	assert_equal '[✅️SUCCESS] success' "$success_output" 'success log contract' || return 1
 	print_usage > "$usage_output_file"
-	assert_contains 'dev-tools.sh [install|init|status] [--global] [--debug] [--dry-run]' "$usage_output_file" 'document status, debug, and dry-run flags' || return 1
+	assert_contains 'dev-tools.sh [install|init|status] [--agent copilot|cursor] [--global] [--debug] [--dry-run]' "$usage_output_file" 'document agent, status, debug, and dry-run flags' || return 1
 	assert_not_contains 'DEV_TOOLS_DEBUG' "$usage_output_file" 'remove debug environment variable documentation' || return 1
 }
 
@@ -830,6 +841,7 @@ write_init_tool_mocks() {
 		'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
 		'printf "serena %s\\n" "$*" >> "$MOCK_LOG"' \
 		'if [[ "${1:-}" == "init" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "project" && "${2:-}" == "index" ]]; then exit 0; fi' \
 		'if [[ "${1:-}" == "start-mcp-server" && "${2:-}" == "--help" ]]; then exit 0; fi' \
 		'exit 1'
 }
@@ -852,20 +864,38 @@ test_project_init_mode() {
 	grep -Eq '^  serena[[:space:]]+initialized[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'initialize Serena server runtime' || return 1
 	grep -Eq '^  python[[:space:]]+skipped[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'skip tools without project initialization' || return 1
 	grep -Eq '^  uv[[:space:]]+skipped[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'skip uv during init' || return 1
-	assert_contains 'rtk init' "$MOCK_LOG" 'run local RTK initialization' || return 1
-	assert_contains 'codegraph install --target=auto --location=local --yes' "$MOCK_LOG" 'run local CodeGraph agent setup' || return 1
+	assert_contains 'rtk init --copilot --no-patch' "$MOCK_LOG" 'run Copilot-specific RTK initialization' || return 1
+	assert_not_contains 'rtk init --global' "$MOCK_LOG" 'do not use Cursor RTK initialization for Copilot' || return 1
+	assert_not_contains 'codegraph install' "$MOCK_LOG" 'do not auto-configure CodeGraph for Copilot' || return 1
 	assert_contains 'codegraph init' "$MOCK_LOG" 'run CodeGraph project initialization' || return 1
 	assert_contains 'serena init' "$MOCK_LOG" 'run Serena runtime initialization' || return 1
+	assert_contains 'serena project index' "$MOCK_LOG" 'index the current project with Serena' || return 1
 	assert_contains 'serena start-mcp-server --help' "$MOCK_LOG" 'verify Serena MCP server command' || return 1
 	assert_not_contains 'uv init' "$MOCK_LOG" 'do not initialize a Python project with uv' || return 1
 	assert_not_contains 'uv sync' "$MOCK_LOG" 'do not sync dependencies during init' || return 1
 	assert_not_contains 'uv venv' "$MOCK_LOG" 'do not create a Python environment during init' || return 1
-	assert_not_contains 'serena project' "$MOCK_LOG" 'do not create a Serena project' || return 1
+	assert_not_contains 'serena project create' "$MOCK_LOG" 'do not explicitly create a Serena project' || return 1
 	assert_not_contains 'serena index' "$MOCK_LOG" 'do not index a Serena project' || return 1
 	assert_not_contains 'serena daemon' "$MOCK_LOG" 'do not start a Serena daemon' || return 1
 	assert_not_contains 'serena http' "$MOCK_LOG" 'do not start Serena HTTP mode' || return 1
 	cmp -s "$agents_snapshot" "$MOCK_AGENTS" || fail_test 'init changed AGENTS.md through install recording' || return 1
 	rm -f "$agents_snapshot"
+
+	prepare_mock_environment project-init-cursor
+	install_failed_tool_stubs
+	write_init_tool_mocks
+
+	if output="$(run_helper_mode init --agent cursor)"; then
+		helper_status=0
+	else
+		helper_status="$?"
+	fi
+	assert_equal '0' "$helper_status" 'Cursor project initialization succeeds' || return 1
+	assert_contains 'rtk init --global --agent cursor --no-patch' "$MOCK_LOG" 'run Cursor-specific RTK initialization' || return 1
+	assert_not_contains 'rtk init --copilot' "$MOCK_LOG" 'do not use Copilot RTK initialization for Cursor' || return 1
+	assert_contains 'codegraph install --target=cursor --location=local --yes' "$MOCK_LOG" 'run Cursor-specific CodeGraph agent setup' || return 1
+	assert_contains 'codegraph init' "$MOCK_LOG" 'initialize the CodeGraph project for Cursor' || return 1
+	assert_contains 'serena project index' "$MOCK_LOG" 'index the Cursor project with Serena' || return 1
 
 	prepare_mock_environment project-init-failure
 	install_failed_tool_stubs
@@ -883,7 +913,7 @@ test_project_init_mode() {
 	assert_equal '1' "$helper_status" 'return failure when project initialization fails' || return 1
 	grep -Eq '^  rtk[[:space:]]+failed[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'report RTK init failure' || return 1
 	assert_contains 'exit status 1' "$MOCK_ROOT/output.log" 'report initialization status' || return 1
-	assert_contains 'command: rtk init' "$MOCK_ROOT/output.log" 'report initialization command' || return 1
+	assert_contains 'command: rtk init --copilot --no-patch' "$MOCK_ROOT/output.log" 'report initialization command' || return 1
 	grep -Eq '^  codegraph[[:space:]]+initialized[[:space:]]' "$MOCK_ROOT/output.log" || fail_test 'continue with CodeGraph after RTK failure' || return 1
 }
 

@@ -56,6 +56,16 @@ test_parse_args_defaults_to_ask() {
 	[[ "$OVERWRITE_POLICY" == "ask" ]] || fail_test 'parse_args did not default overwrite policy to ask' || return 1
 }
 
+test_parse_args_tracks_target_without_changing_passthrough() {
+	parse_args cursor --overwrite yes
+
+	[[ "$TARGET_CLI" == "cursor" ]] || fail_test 'parse_args did not track the Cursor target' || return 1
+	[[ "${PASSTHROUGH_ARGS[*]}" == "cursor --overwrite yes" ]] || fail_test 'target tracking changed passthrough arguments' || return 1
+
+	parse_args --overwrite no
+	[[ "$TARGET_CLI" == "copilot" ]] || fail_test 'parse_args did not reset the default target' || return 1
+}
+
 test_parse_args_rejects_invalid_overwrite_values() {
 	if (parse_args --overwrite maybe 2>/dev/null); then
 		fail_test 'parse_args accepted an invalid overwrite value'
@@ -139,6 +149,7 @@ prepare_fixture() {
 	MOCK_HOME="$FIXTURE_ROOT/home"
 	DODKIT_LOG="$FIXTURE_ROOT/dodkit.log"
 	OUTPUT_LOG="$FIXTURE_ROOT/output.log"
+	HELPER_ARGS_LOG="$FIXTURE_ROOT/helper-args.log"
 
 	mkdir -p "$SOURCE_ROOT/templates/.docs" "$TARGET_ROOT" "$MOCK_BIN" "$MOCK_HOME"
 	cp "$PROJECT_DIRECTORY/install.sh" "$SOURCE_ROOT/install.sh"
@@ -148,6 +159,7 @@ prepare_fixture() {
 	cp "$PROJECT_DIRECTORY/templates/.docs/PRINCIPLES.md" "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md"
 
 	: > "$DODKIT_LOG"
+	: > "$HELPER_ARGS_LOG"
 	FIRST_SETUP_EXECUTION_MARKER="$FIXTURE_ROOT/first-setup-executed"
 	write_mock_command "$SOURCE_ROOT/templates/first-setup.sh" \
 		'printf "first-setup-ran\n" > "$FIRST_SETUP_EXECUTION_MARKER"' \
@@ -167,7 +179,7 @@ prepare_fixture() {
 			'exit 0'
 	done
 
-	export FIXTURE_ROOT SOURCE_ROOT TARGET_ROOT MOCK_BIN MOCK_HOME DODKIT_LOG OUTPUT_LOG FIRST_SETUP_EXECUTION_MARKER
+	export FIXTURE_ROOT SOURCE_ROOT TARGET_ROOT MOCK_BIN MOCK_HOME DODKIT_LOG OUTPUT_LOG HELPER_ARGS_LOG FIRST_SETUP_EXECUTION_MARKER
 }
 
 run_installer_noninteractive() {
@@ -205,6 +217,32 @@ test_default_helper_deployment_and_dodkit_order() {
 	if ! (( dodkit_line < helper_line )); then
 		fail_test 'helper ran before DODKit'
 	fi
+}
+
+test_helper_receives_selected_target() {
+	prepare_fixture helper-target-copilot
+	write_mock_command "$SOURCE_ROOT/templates/dev-tools.sh" \
+		'printf "%s\\n" "$@" > "$HELPER_ARGS_LOG"'
+
+	(
+		cd "$TARGET_ROOT"
+		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" HELPER_ARGS_LOG="$HELPER_ARGS_LOG" bash "$SOURCE_ROOT/install.sh" copilot </dev/null > "$OUTPUT_LOG" 2>&1
+	)
+
+	assert_contains '--agent' "$HELPER_ARGS_LOG" 'pass the helper agent option for Copilot' || return 1
+	assert_contains 'copilot' "$HELPER_ARGS_LOG" 'pass the Copilot target to the helper' || return 1
+
+	prepare_fixture helper-target-cursor
+	write_mock_command "$SOURCE_ROOT/templates/dev-tools.sh" \
+		'printf "%s\\n" "$@" > "$HELPER_ARGS_LOG"'
+
+	(
+		cd "$TARGET_ROOT"
+		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" HELPER_ARGS_LOG="$HELPER_ARGS_LOG" bash "$SOURCE_ROOT/install.sh" cursor </dev/null > "$OUTPUT_LOG" 2>&1
+	)
+
+	assert_contains '--agent' "$HELPER_ARGS_LOG" 'pass the helper agent option for Cursor' || return 1
+	assert_contains 'cursor' "$HELPER_ARGS_LOG" 'pass the Cursor target to the helper' || return 1
 }
 
 test_existing_assets_updated_by_default_and_helper_overwritten() {
@@ -351,6 +389,7 @@ run_test() {
 run_test 'default helper deployment and DODKit order' test_default_helper_deployment_and_dodkit_order
 run_test 'overwrite parser preserves explicit passthrough' test_parse_args_accepts_overwrite_policy_and_preserves_passthrough
 run_test 'overwrite parser defaults to ask' test_parse_args_defaults_to_ask
+run_test 'target parser preserves passthrough' test_parse_args_tracks_target_without_changing_passthrough
 run_test 'overwrite parser rejects invalid values' test_parse_args_rejects_invalid_overwrite_values
 run_test 'overwrite parser forwards legacy force' test_parse_args_forwards_legacy_force_without_special_handling
 run_test 'overwrite parser rejects missing values' test_parse_args_rejects_missing_overwrite_value
@@ -360,6 +399,7 @@ run_test 'default overwrite updates assets and helper' test_existing_assets_upda
 run_test 'overwrite=no preserves local assets' test_overwrite_no_preserves_local_assets_and_forwards_policy
 run_test 'overwrite=yes updates local assets' test_overwrite_yes_updates_local_assets_and_forwards_policy
 run_test 'legacy force option is forwarded to DODKit' test_legacy_force_is_forwarded_to_dodkit
+run_test 'helper receives selected target' test_helper_receives_selected_target
 run_test 'existing .dev destination prompt' test_existing_dev_directory_destination_prompt
 run_test 'helper failure status is reported' test_helper_failure_status_is_reported
 run_test 'DODKit failure status is reported' test_dodkit_failure_status_is_reported

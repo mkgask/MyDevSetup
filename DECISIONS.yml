@@ -281,12 +281,12 @@ decisions:
         - id: installer-011-4-third-party-cli-scope
           decision: >
             既定の install モードでは rtk、codegraph、uv、Serena を含む対象ツールのCLI本体だけを配置し、rtk init、codegraph install、codegraph init、uv init などの初期設定を自動実行しない。
-            SerenaのMCPクライアント設定、プロジェクト作成、プロジェクト索引、HTTP daemon/service化も自動実行しない。
+            SerenaのMCPクライアント設定、プロジェクト作成、プロジェクト索引、HTTP daemon/service化も通常の install では自動実行しない。
             明示的な init モードでは、現在プロジェクトで利用するために必要な公式の初期設定をツールごとに実行できる。
             一般的な導入経路では ~/.local/bin のためにシェル設定ファイルを変更せず、導入先の検証に必要なPATH調整は今回の実行中に限定する。
             ただし通常の install で今回新規導入に成功した proto/mise 経路のmanager利用可能化は、CLI初期設定とは別の post-install 契約に従う。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-005-post-install-activation.md"
+          link: "records/dev-tools-006-init-agent-targeting.md"
           sub_decisions: []
 
         - id: installer-011-5-failure-and-noninteractive-policy
@@ -386,28 +386,42 @@ decisions:
 
         - id: installer-011-15-mode-selection
           decision: >
-            補助スクリプトは dev-tools.sh [install|init|status] [--global] [--debug] [--dry-run] の位置引数を受け付け、モード省略時は install とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行い、status は現在のCLI状態だけを検証する。
+            補助スクリプトは dev-tools.sh [install|init|status] [--agent copilot|cursor] [--global] [--debug] [--dry-run] の位置引数を受け付け、モード省略時は install、agent省略時は copilot とする。install は不足CLIの検出・選択・導入・検証・AGENTS.md記録を行い、init は導入済みツールのプロジェクト設定だけを行い、status は現在のCLI状態だけを検証する。
             --global と --debug は引数の位置を問わず受け付け、同じflagの複数指定は冪等に扱う。--debug はこの補助スクリプトの一回限りの診断指定であり、環境変数による代替指定は提供しない。
-            --global と --dry-run は install との組み合わせだけを許可し、init または status との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備だけを行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug/--dry-run を渡す契約はこの決定に含めない。
+            --agent は引数の位置を問わず受け付け、copilot または cursor 以外の値は拒否する。これは install.sh が選択済みtargetを通常の install 起動にも渡せるようにするためで、agent指定は init の対象別初期設定にだけ影響する。
+            --global と --dry-run は install との組み合わせだけを許可し、init または status との組み合わせは明示的な引数エラーとする。initではuvを常に初期設定不要としてskipし、Serenaはサーバー側runtime準備と現在プロジェクトの索引作成を行う。トップレベル install.sh の引数透過契約や、install.sh から補助スクリプトへ --debug/--dry-run を渡す契約はこの決定に含めない。
           status: "✅️Implementation Approved"
-          sub_decisions: []
+          link: "records/dev-tools-006-init-agent-targeting.md"
+          sub_decisions:
+            - id: installer-011-15-1-agent-target-propagation
+              decision: >
+                install.sh は選択された copilot または cursor target（省略時は copilot）を DODKit へ渡す引数列から保持し、helper起動時に `--agent <target>` として渡す。DODKitへ渡す引数の順序・値・意味論は変更しない。
+              status: "✅️Implementation Approved"
+              sub_decisions: []
 
         - id: installer-011-16-project-init-scope
           decision: >
             明示的な init は不足バイナリを導入せず、現在プロジェクトで利用可能かつ初期設定が必要なツールについて、公式CLIが通常行うプロジェクト単位の設定を追加確認なしで実行する。
             初期設定不要または未導入のツールはスキップし、uvは常に初期設定不要として `uv init`、`uv sync`、virtualenv作成を行わない。
-            Serenaは利用可能な場合だけ `serena init` を実行し、`serena start-mcp-server --help` でMCP server起動CLIを検証する。これはSerena自身のMCP server実行に必要なユーザー側runtime設定を作る限定例外であり、MCPクライアント設定、`serena project create`、project index、他プロジェクトへの設定適用は行わない。
+            Serenaは利用可能な場合だけ `serena init` と現在ディレクトリを対象にした `serena project index` を実行し、`serena start-mcp-server --help` でMCP server起動CLIを検証する。これはSerena自身のMCP server実行に必要なユーザー側runtime設定と、現在プロジェクトのsymbol cacheを準備する限定例外であり、MCPクライアント設定、他プロジェクトへの設定適用は行わない。
             個別の初期設定失敗では後続ツールを継続し、初期設定が安全に非対話実行できない場合は無理に実行せず失敗またはスキップとして記録する。
           status: "✅️Implementation Approved"
-          sub_decisions: []
+          link: "records/dev-tools-006-init-agent-targeting.md"
+          sub_decisions:
+            - id: installer-011-16-1-agent-specific-tool-init
+              decision: >
+                init は選択された agent に応じて、copilot では RTK に `rtk init --copilot --no-patch`、cursor では `rtk init --global --agent cursor --no-patch` を渡す。CodeGraph は cursor では `codegraph install --target=cursor --location=local --yes` を実行してから `codegraph init` を実行し、copilot では `codegraph install` を実行せず、`--target=auto` や未対応targetで別agentの設定を作らないまま `codegraph init` だけを実行する。
+              status: "✅️Implementation Approved"
+              sub_decisions: []
 
         - id: installer-011-17-failure-diagnostics
           decision: >
             install と init の外部コマンド失敗、および導入後のコマンド検証失敗は、後続ツールの処理を継続しつつ、対象ツールの結果・error・最終summaryに実行コマンドと終了コードを記録し、補助スクリプト全体は失敗を反映した非0を返す。
             status の `--version` 検証で利用不能な対象も、検証詳細を結果へ残し、全対象の確認を継続したうえで最終summary表示後に非0を返す。
-            dev-tools.sh に --debug が明示されたときだけ、外部install/initコマンドと導入後検証コマンドの実行前traceを stderr へ [🔵DEBUG] ラベルで出力する。uv tool route、Serenaのserver-side init、MCP server CLI検証もこの診断契約に含める。
+            dev-tools.sh に --debug が明示されたときだけ、外部install/initコマンドと導入後検証コマンドの実行前traceを stderr へ [🔵DEBUG] ラベルで出力する。uv tool route、Serenaのserver-side init、Serena project index、MCP server CLI検証もこの診断契約に含める。
             --debug がない通常実行と DEV_TOOLS_DEBUG 環境変数だけを設定した実行ではtraceを出力せず、既存の標準出力・標準エラーのwarning／error／successログ契約を変更しない。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-006-init-agent-targeting.md"
           sub_decisions: []
 
         - id: installer-011-18-uv-and-serena-installation
@@ -419,9 +433,10 @@ decisions:
 
         - id: installer-011-19-serena-server-initialization
           decision: >
-            Serenaの明示的な init は `serena init` を一回実行し、`serena start-mcp-server --help` でstdio MCP server起動CLIの存在を検証するまでとする。helper自身はMCP serverを長時間起動・常駐させず、クライアント設定、project create、project index、HTTP daemon/service化も行わない。
-            `serena init` がSerena自身のMCP server実行に必要なユーザー側runtime設定を `~/.serena` 等へ作成することだけを許可する限定例外とし、クライアント設定や他プロジェクトへの設定適用は許可しない。
+            Serenaの明示的な init は現在ディレクトリで `serena init` を一回実行し、`serena project index` で現在プロジェクトの設定とsymbol cacheを準備した後、`serena start-mcp-server --help` でstdio MCP server起動CLIの存在を検証するまでとする。helper自身はMCP serverを長時間起動・常駐させず、クライアント設定、他プロジェクトへの設定適用、HTTP daemon/service化も行わない。
+            `serena init` がSerena自身のMCP server実行に必要なユーザー側runtime設定を `~/.serena` 等へ作成し、`serena project index` が現在プロジェクトへ `.serena/project.yml` とsymbol cacheを作成することだけを許可する限定例外とする。クライアント設定や他プロジェクトへの設定適用は許可しない。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-006-init-agent-targeting.md"
           sub_decisions: []
 
         - id: installer-011-20-status-mode

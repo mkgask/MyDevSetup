@@ -1,0 +1,44 @@
+# Decision Record: dev-tools-006-init-agent-targeting
+
+## Metadata
+- Created At: 2026-08-09
+- Scope: Agent-aware project initialization for RTK, CodeGraph, and Serena
+
+## Notes
+- This file is append-only discussion history.
+- Do not add mutable tracking fields here (status, remaining work, open action items).
+- Do not keep open-question backlogs here. If clarification is needed, ask in chat and append the resolved facts.
+- If a fact becomes a binding implementation constraint, promote it to DECISIONS.yml.
+- Keep each entry as short as the discussion allows.
+
+## Entry List
+
+### Entry 0001 (2026-08-09T06:02:26Z)
+- Why now: `dev-tools.sh init` currently invokes RTK without a selected agent, invokes CodeGraph with `--target=auto`, and limits Serena to its user-side runtime initialization plus CLI help verification. The installer already knows the DODKit target, so the same target must reach the helper before project initialization can be target-correct.
+- Findings / trade-offs: The bounded scan covered `install.sh` target parsing and helper ordering, `templates/dev-tools.sh` argument parsing and init dispatch, the focused init tests, the active contracts `installer-011-4`, `installer-011-15`, `installer-011-16`, `installer-011-17`, and `installer-011-19`, and the installed CLI behavior. RTK 0.44.1 supports explicit Copilot initialization with `rtk init --copilot` and Cursor hooks with `rtk init --global --agent cursor`; `--no-patch` makes both commands non-interactive with respect to settings patching. CodeGraph 1.5.0 recognizes `cursor` but does not recognize `copilot`, `copilot-cli`, or `copilot-vscode`; isolated `--target=auto` setup created Claude files, so auto-detection is unsafe for a Copilot target. Serena 1.6.1 exposes `serena project index`, which auto-creates the current project's `.serena/project.yml` when needed, while `serena init` remains user-side runtime setup. Serena's client configuration remains a separate concern because VS Code/Copilot and Cursor use different MCP configuration schemas and the current project contract forbids client configuration.
+- Focus areas: Add an explicit `--agent copilot|cursor` helper argument with a `copilot` default; extract the selected Copilot/Cursor target in `install.sh` and pass it to the helper without changing DODKit argument passthrough; map RTK to its explicit target command; use CodeGraph's explicit Cursor target and avoid configuring any unsupported or auto-selected agent for Copilot; extend Serena init to index the current project while retaining runtime and server CLI verification; update focused mocks and tests for command selection, propagation, and failure continuation.
+- Explicit exclusions: Do not run `codegraph install --target=auto`; do not create Claude or another unsupported agent configuration for Copilot; do not add MCP client configuration, long-running Serena services, HTTP mode, uv project setup, or global init behavior; do not change DODKit's passthrough argument sequence or the supported MyDevSetup target set.
+- Current conclusion: The candidate direction is to make the helper target-aware and pass the installer's selected target as `--agent`. In `init`, RTK uses `--copilot --no-patch` for Copilot and `--global --agent cursor --no-patch` for Cursor. CodeGraph uses `--target=cursor --location=local --yes` for Cursor and skips agent installation for Copilot before running project graph initialization. Serena runs `serena init`, `serena project index`, and `serena start-mcp-server --help`, without configuring a client. This fixes target leakage and makes Serena prepare the current project while preserving the existing side-effect boundaries.
+- Promotion to DECISIONS.yml: pending
+- Evidence / references: `install.sh`; `templates/dev-tools.sh`; `tests/dev-tools.test.sh`; `tests/install.test.sh`; `DECISIONS.yml`; `rtk init --help`; `serena project index --help`; `serena start-mcp-server --help`; isolated `codegraph install --target=auto --location=local --yes`; `codegraph install --print-config cursor`
+
+### Entry 0002 (2026-08-09T06:05:00Z)
+- Why now: Gate A の discussion-validation として、候補方向を元の init 要求、現在の agent 対応範囲、既存の side-effect 境界、失敗継続契約へ照合した。
+- Findings / trade-offs: Broad scan は、installer の DODKit target parser と helper 起動順、helper の mode parser と init dispatch、RTK/CodeGraph/Serena の installed CLI help と isolated behavior、focused init/install tests、`installer-011-4`、`installer-011-15`、`installer-011-16`、`installer-011-17`、`installer-011-19` を含んでいる。Copilot の CodeGraph target が存在しないため `auto` を代用しないことは、別 agent の設定を作らない既存の side-effect 境界に適合する。Serena の project index は今回明示された init の中だけで実行し、MCP client configuration へは広げないため、target-specific client schema の差異を実装へ持ち込まない。
+- Current conclusion: PASS — 候補方向は元の目的に適合し、target leakage、CodeGraph の Claude fallback、Serena の current-project 未準備を解消できる。promotion 対象は `installer-011-4-third-party-cli-scope`、`installer-011-15-mode-selection`、`installer-011-16-project-init-scope`、`installer-011-17-failure-diagnostics`、`installer-011-19-serena-server-initialization` と、agent-aware init mapping を表す新規 sub-decision とする。`--global`、`status`、`install --dry-run`、MCP client configuration、DODKit passthrough の意味論は変更しない。
+- Promotion to DECISIONS.yml: ready -> `installer-011-4-third-party-cli-scope`, `installer-011-15-mode-selection`, `installer-011-16-project-init-scope`, `installer-011-17-failure-diagnostics`, `installer-011-19-serena-server-initialization`, new agent-aware init sub-decision
+- Evidence / references: `DECISIONS.yml`; `install.sh`; `templates/dev-tools.sh`; `tests/dev-tools.test.sh`; `tests/install.test.sh`; `rtk init --help`; `serena project index --help`; isolated CodeGraph auto-target run
+
+### Entry 0003 (2026-08-09T06:12:03Z)
+- Implementation result: `templates/dev-tools.sh` now accepts `--agent copilot|cursor`, defaults to Copilot, maps RTK to `--copilot` or global Cursor hooks, maps CodeGraph to the explicit local Cursor target, skips CodeGraph agent installation for Copilot instead of using `auto`, and runs Serena project indexing between runtime initialization and MCP CLI verification. `install.sh` extracts the selected Copilot/Cursor target without changing DODKit passthrough arguments and passes it to the helper at startup.
+- Boundary result: install/status/dry-run behavior, `--global` validation, DODKit argument order, MCP client configuration, long-running Serena services, and uv project setup remain unchanged. README now documents the explicit `--agent cursor` requirement for later Cursor init runs.
+- Test result: `tests/dev-tools.test.sh` passed 20 tests, including Copilot and Cursor command mappings, CodeGraph Copilot isolation, Serena indexing, failure continuation, and parser validation. `tests/install.test.sh` passed 17 tests, including target extraction, unchanged passthrough, and helper propagation for both targets.
+- Promotion to DECISIONS.yml: implementation validation pending
+- Evidence / references: `templates/dev-tools.sh`; `install.sh`; `README.md`; `tests/dev-tools.test.sh`; `tests/install.test.sh`
+
+### Entry 0004 (2026-08-09T06:12:03Z)
+- Implementation-validation: PASS — Bash syntax checks passed for all changed scripts and tests; `tests/first-setup.test.sh` passed its 1 focused test; `DECISIONS.yml` parsed successfully with 63 unique decision IDs; editor diagnostics reported no errors for changed code; and `git diff --check` passed.
+- Artifact alignment: `DECISIONS.yml`, the helper, installer propagation, focused tests, README, and this record agree on the `--agent copilot|cursor` contract, RTK and CodeGraph target behavior, Serena current-project indexing, and the exclusion of MCP client configuration and long-running services.
+- Risk boundary: Validation used isolated CLI help/dry-run checks and deterministic mocks; no real project configuration was written by the investigation commands. The installed CodeGraph 1.5.0 target list has no Copilot target, so Copilot intentionally receives graph initialization without CodeGraph agent configuration. RTK Cursor remains global-only in the installed version and is invoked with its required global scope.
+- Promotion to DECISIONS.yml: `installer-011-4-third-party-cli-scope`, `installer-011-15-mode-selection`, `installer-011-15-1-agent-target-propagation`, `installer-011-16-project-init-scope`, `installer-011-16-1-agent-specific-tool-init`, `installer-011-17-failure-diagnostics`, and `installer-011-19-serena-server-initialization` are ready for `✅️Implementation Approved`.
+- Evidence / references: `bash -n templates/dev-tools.sh install.sh tests/dev-tools.test.sh tests/install.test.sh`; `bash tests/dev-tools.test.sh`; `bash tests/install.test.sh`; `bash tests/first-setup.test.sh`; Ruby YAML/ID validation; `get_errors`; `git diff --check`; isolated RTK/CodeGraph/Serena CLI checks

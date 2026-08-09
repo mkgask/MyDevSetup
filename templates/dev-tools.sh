@@ -33,6 +33,7 @@ LAST_VERIFICATION_DETAILS=""
 DEBUG_ENABLED=0
 
 DEV_TOOLS_MODE="install"
+DEV_TOOLS_AGENT="copilot"
 GLOBAL_INSTALL=0
 
 AGENTS_PATH="${DEV_TOOLS_AGENTS_PATH:-AGENTS.md}"
@@ -50,7 +51,7 @@ UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 print_usage() {
 	cat <<'USAGE'
 Usage:
-	dev-tools.sh [install|init|status] [--global] [--debug] [--dry-run]
+	dev-tools.sh [install|init|status] [--agent copilot|cursor] [--global] [--debug] [--dry-run]
 	dev-tools.sh --help
 
 Description:
@@ -1200,14 +1201,35 @@ run_project_initialization() {
 
 	case "$tool_name" in
 		rtk)
-			run_recorded_command "$command_name" init
+			case "$DEV_TOOLS_AGENT" in
+				copilot)
+					run_recorded_command "$command_name" init --copilot --no-patch
+				;;
+				cursor)
+					run_recorded_command "$command_name" init --global --agent cursor --no-patch
+				;;
+				*)
+				return 2
+				;;
+			esac
 		;;
 		codegraph)
-			run_recorded_command "$command_name" install --target=auto --location=local --yes || return $?
+			case "$DEV_TOOLS_AGENT" in
+				cursor)
+					run_recorded_command "$command_name" install --target=cursor --location=local --yes || return $?
+				;;
+				copilot)
+				log_info "CodeGraph has no Copilot target; skipping agent configuration"
+				;;
+				*)
+				return 2
+				;;
+			esac
 			run_recorded_command "$command_name" init
 		;;
 		serena)
 			run_recorded_command "$command_name" init || return $?
+			run_recorded_command "$command_name" project index || return $?
 			run_recorded_command "$command_name" start-mcp-server --help
 		;;
 		*)
@@ -1603,6 +1625,7 @@ parse_args() {
 	local mode_seen=0
 
 	DEV_TOOLS_MODE="install"
+	DEV_TOOLS_AGENT="copilot"
 	GLOBAL_INSTALL=0
 	DRY_RUN=0
 	DEBUG_ENABLED=0
@@ -1616,6 +1639,23 @@ parse_args() {
 				fi
 				DEV_TOOLS_MODE="$1"
 				mode_seen=1
+				;;
+			--agent)
+				if [[ "$#" -lt 2 ]]; then
+					log_error "The --agent option requires a value: copilot or cursor"
+					return 2
+				fi
+
+				case "$2" in
+					copilot|cursor)
+					DEV_TOOLS_AGENT="$2"
+					;;
+				*)
+					log_error "Unsupported agent target: $2. Expected copilot or cursor."
+					return 2
+					;;
+				esac
+				shift
 				;;
 			--global)
 				GLOBAL_INSTALL=1
