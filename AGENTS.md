@@ -7,4 +7,6 @@
 - `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.
 - `uv`: `uv`
 - `serena`: `serena`
+- `python`: `python3`
+- `node`: `node`
 <!-- END MYDEVSETUP DEV TOOLS -->

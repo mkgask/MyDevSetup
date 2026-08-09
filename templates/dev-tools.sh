@@ -36,6 +36,9 @@ DEBUG_ENABLED=0
 DEV_TOOLS_MODE="install"
 DEV_TOOLS_AGENT="copilot"
 GLOBAL_INSTALL=0
+PROTO_TOOL_CAPABILITY_CACHE_FILE="${DEV_TOOLS_PROTO_CAPABILITY_CACHE:-${TMPDIR:-/tmp}/mydevsetup-proto-capability-$$}"
+
+: > "$PROTO_TOOL_CAPABILITY_CACHE_FILE"
 
 AGENTS_PATH="${DEV_TOOLS_AGENTS_PATH:-AGENTS.md}"
 SHELL_PROFILE_PATH="${DEV_TOOLS_SHELL_PROFILE:-${HOME:-}/.bashrc}"
@@ -381,6 +384,9 @@ system_route_available() {
 
 nix_package_candidates() {
 	case "$1" in
+		serena)
+			return 1
+			;;
 		python)
 			printf '%s\n' python3 python
 			;;
@@ -424,24 +430,75 @@ nix_route_available() {
 	nix_package_for_tool "$tool_name" >/dev/null
 }
 
-proto_tool_for_tool() {
+proto_tool_candidates() {
 	case "$1" in
-		python|ruby)
-			printf '%s' "$1"
+		serena)
+			return 1
+			;;
+		rg)
+			printf '%s\n' ripgrep rg
 			;;
 		*)
-			return 1
+			printf '%s\n' "$1"
 			;;
 	esac
 }
 
+proto_capability_cache_lookup() {
+	local manager_tool="$1"
+	local cached_tool=""
+	local cached_result=""
+
+	while IFS=$'\t' read -r cached_tool cached_result; do
+		if [[ "$cached_tool" == "$manager_tool" ]]; then
+			printf '%s' "$cached_result"
+			return 0
+		fi
+	done < "$PROTO_TOOL_CAPABILITY_CACHE_FILE"
+
+	return 1
+}
+
+proto_capability_cache_store() {
+	local manager_tool="$1"
+	local capability_result="$2"
+
+	printf '%s\t%s\n' "$manager_tool" "$capability_result" >> "$PROTO_TOOL_CAPABILITY_CACHE_FILE"
+}
+
+proto_tool_for_tool() {
+	local tool_name="$1"
+	local manager_tool=""
+	local cached_result=""
+
+	while IFS= read -r manager_tool; do
+		if cached_result="$(proto_capability_cache_lookup "$manager_tool")"; then
+			if [[ "$cached_result" == 1 ]]; then
+				printf '%s' "$manager_tool"
+				return 0
+			fi
+			continue
+		fi
+
+		if proto versions "$manager_tool" --json >/dev/null 2>&1; then
+			proto_capability_cache_store "$manager_tool" 1
+			printf '%s' "$manager_tool"
+			return 0
+		fi
+
+		proto_capability_cache_store "$manager_tool" 0
+	done < <(proto_tool_candidates "$tool_name")
+
+	return 1
+}
+
 proto_build_mode_for_tool() {
 	case "$1" in
-		python)
-			printf '%s' '--no-build'
-			;;
 		ruby)
 			printf '%s' '--build'
+			;;
+		python|node|rg|rtk|codegraph|uv)
+			printf '%s' '--no-build'
 			;;
 		*)
 			return 1
@@ -498,12 +555,16 @@ proto_route_available() {
 	local tool_name="$1"
 
 	command -v proto >/dev/null 2>&1 || return 1
-	proto_tool_for_tool "$tool_name" >/dev/null || return 1
-	proto install --help >/dev/null 2>&1
+	proto_build_mode_for_tool "$tool_name" >/dev/null || return 1
+	proto install --help >/dev/null 2>&1 || return 1
+	proto_tool_for_tool "$tool_name" >/dev/null
 }
 
 mise_tool_candidates() {
 	case "$1" in
+		serena)
+			return 1
+			;;
 		node)
 		printf '%s\n' node
 		;;
@@ -539,6 +600,9 @@ mise_route_available() {
 
 asdf_plugin_candidates() {
 	case "$1" in
+		serena)
+			return 1
+			;;
 		node)
 		printf '%s\n' nodejs
 		;;
@@ -697,8 +761,14 @@ append_available_route() {
 available_routes_for_tool() {
 	local tool_name="$1"
 
-	append_available_route "$tool_name" nix
+	if [[ "$tool_name" == "serena" ]]; then
+		append_available_route "$tool_name" uv-tool
+		printf '%s\n' skip
+		return 0
+	fi
+
 	append_available_route "$tool_name" proto
+	append_available_route "$tool_name" nix
 	append_available_route "$tool_name" mise
 	append_available_route "$tool_name" asdf
 	append_available_route "$tool_name" brew
@@ -711,11 +781,8 @@ available_routes_for_tool() {
 
 default_route_for_tool() {
 	case "$1" in
-		python|ruby|node|rg)
-			printf '%s' system
-			;;
-		rtk|codegraph|uv)
-			printf '%s' official
+		python|ruby|node|rg|rtk|codegraph|uv)
+			printf '%s' proto
 			;;
 		serena)
 			printf '%s' uv-tool
@@ -761,6 +828,13 @@ default_available_route_for_tool() {
 		fi
 	done < <(available_routes_for_tool "$tool_name")
 
+	while IFS= read -r route_name; do
+		if [[ "$route_name" != "skip" ]]; then
+			printf '%s' "$route_name"
+			return 0
+		fi
+	done < <(available_routes_for_tool "$tool_name")
+
 	printf '%s' skip
 }
 
@@ -791,6 +865,14 @@ prompt_for_route() {
 			break
 		fi
 	done
+	if [[ "$default_route" == "skip" ]]; then
+		for route_name in "${routes[@]}"; do
+			if [[ "$route_name" != "skip" ]]; then
+				default_route="$route_name"
+				break
+			fi
+		done
+	fi
 
 	if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
 		prompt_input="/dev/stdin"
@@ -991,6 +1073,7 @@ planned_install_command_for_route() {
 	local manager_name=""
 	local package_name=""
 	local manager_tool=""
+	local build_mode=""
 	local plugin_name=""
 	local installer_url=""
 	local pipeline_command=""
@@ -1928,5 +2011,6 @@ main() {
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+	trap 'rm -f -- "$PROTO_TOOL_CAPABILITY_CACHE_FILE"' EXIT
 	main "$@"
 fi

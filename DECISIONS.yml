@@ -224,33 +224,37 @@ decisions:
           decision: >
             不足時の確認対象は python、ruby、node、rg、rtk、codegraph、uv、Serena の順とし、存在するツールは質問せず、
             未導入のツールだけを各一回ずつの導入方法選択で確認する。選択肢はツールごとの対応表から生成し、
-            codegraph、node、uv、Serena の実行コマンド名はそれぞれ codegraph、node、uv、serena とする。空入力時の既定導入方法はツールごとに固定する。
+            codegraph、node、uv、Serena の実行コマンド名はそれぞれ codegraph、node、uv、serena とする。空入力時はSerenaではuv-toolを既定とし、
+            その他の対象では利用可能なproto routeを優先する。protoが利用できない場合はroute候補順で最初に利用可能な導入方法を選択する。
             uv は Serena より先に処理し、Serena の導入依存を同一実行内で満たせる順序を保つ。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-009-node-tool-installation.md"
+          link: "records/dev-tools-010-proto-priority-and-dynamic-capability.md"
           sub_decisions: []
 
         - id: installer-011-2-installation-backends
           decision: >
             対応環境は Linux/WSL に限定し、導入方法は対象ツールを扱える既存の system、nix、proto、mise、asdf、brew、
             official の経路から選ぶ。nix と mise は manager側のread-only capability probeで対象識別子を確認できた場合だけ候補にし、
-            asdf は既に登録済みのplugin inventoryで対象pluginを確認できた場合だけ候補にする。probeの失敗・未知識別子・未登録pluginは候補から除外し、
-            probeは導入、plugin登録、remote一覧の同期、設定変更、永続PATH変更を行わない。protoとsystemは安全な共通probeを採用するまで現行の明示的な識別子mappingを使い、
-            system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。brewはsystem routeから分離し、既存のbrew commandと
+            asdf は既に登録済みのplugin inventoryで対象pluginを確認できた場合だけ候補にする。proto は Serena を除く対象について、alias normalization 後の対象識別子に対する
+            `proto versions <identifier> --json` のread-only capability probeが成功した場合だけ候補にする。probeの失敗・未知識別子・未登録pluginは候補から除外し、
+            probeは導入、plugin登録、設定変更、永続PATH変更を行わない。proto versions が必要とするremote manifestのread-only解決は許可するが、
+            他のremote一覧同期やprobeを契機とした設定変更は行わない。system は対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。brewはsystem routeから分離し、既存のbrew commandと
             Python・Ruby・Node.js・rgの明示的なpackage mappingで候補にする。brewのformula検索やtap追加を行わず、マネージャー本体や不足プラグインは自動導入しない。
-            uv は公式standalone installerを使う official route とし、Serena は uv が利用可能な場合だけ `uv tool install` を使う uv-tool route とする。
+            uv は公式standalone installerを使う official routeをfallbackとして維持し、proto対応時はproto routeを優先する。Serena は uv が利用可能な場合だけ `uv tool install` を使う uv-tool routeを候補にし、proto、nix、mise、asdf、brew、system、official は候補にしない。
             --global では全プロジェクトから利用可能な導入先を持つ system、nix、brew、official、uv-tool 経路だけを候補にし、該当経路がなければ skip とする。
             uv が未導入または導入失敗した場合、Serena の uv-tool route は候補にせず、Serenaを暗黙に別経路で導入しない。
+            同一helperプロセス内で同じmanager identifierを判定する場合、capability probeの結果を再利用し、route列挙・既定選択・dry-runで重複probeしない。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-009-node-tool-installation.md"
+          link: "records/dev-tools-010-proto-priority-and-dynamic-capability.md"
           sub_decisions:
             - id: installer-011-2-1-proto-prebuilt
               decision: >
-                proto route は prebuilt binary のダウンロードを提供する対象ツール（現行では Python）の導入時に
-                `proto install <tool> latest --no-build --yes` を使う。prebuilt が利用できない場合は proto の失敗をそのまま返し、
+                proto route対象はツールごとにhelperへ定義した build mode を使い、現行のproto対象一覧では Rubyだけ `--build`、それ以外は `--no-build` とする。Serenaはproto対象に含めない。
+                capability probeが成功した対象のprebuilt導入では `proto install <tool> latest --no-build --yes` を使い、Rubyのsource導入では `proto install ruby latest --build --yes` を使う。
+                prebuilt が利用できない場合は proto の失敗をそのまま返し、
                 sudo による proto 実行や source build への暗黙フォールバックは行わない。dry-run の planned command も同じ引数を表示する。
               status: "✅️Implementation Approved"
-              link: "records/dev-tools-003-proto-prebuilt-installation.md"
+              link: "records/dev-tools-010-proto-priority-and-dynamic-capability.md"
               sub_decisions: []
             - id: installer-011-2-2-proto-ruby-source-only
               decision: >
@@ -273,11 +277,12 @@ decisions:
             - id: installer-011-2-4-node-installation-mapping
               decision: >
                 Node.js は system 経路では apt-get、dnf、yum、pacman、zypper、apk の `nodejs` package、brew 経路では `node` formula を使う。
+                proto 経路では `node` identifier の `proto versions node --json` capability probeと既存のproto install commandを使い、`proto install node latest --no-build --yes` で prebuilt を導入する。
                 nix は read-only capability probe で `nodejs` attribute を確認し、mise は `node` registry identifier を確認する。
-                asdf は既に登録済みの `nodejs` plugin がある場合だけ候補にする。Node.js に proto または official route、npm packageの自動導入を追加せず、
+                asdf は既に登録済みの `nodejs` plugin がある場合だけ候補にする。Node.js に official route、npm packageの自動導入、protoのsource build fallbackを追加せず、
                 `--global` の候補制限と各routeの既存scope契約を維持する。
               status: "✅️Implementation Approved"
-              link: "records/dev-tools-009-node-tool-installation.md"
+              link: "records/dev-tools-010-proto-priority-and-dynamic-capability.md"
               sub_decisions: []
 
         - id: installer-011-3-command-and-version-contract
@@ -346,12 +351,13 @@ decisions:
             各ツールの選択肢にはmanager-specific capability probeまたは現行の明示的なmappingで利用可能と判定された導入方法だけを表示し、常に skip を含める。
             identifier mappingはmanager側の名前へ変換するためのalias normalizationだけを担い、mapping自体で未確認の対応可否を作らない。
             未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。asdfはremote plugin一覧だけでは候補にしない。
-            routeの候補順は nix、proto、mise、asdf、brew、system、official、uv-tool、skip とする。候補順は表示と数値選択の順序を定めるが、空入力時のツール別既定導入方法は変更しない。
-            system は Python・Ruby・Node.js・rg の既存標準経路を既定とし、brewは独立routeとして Python・Ruby・Node.js・rgだけを既存の明示的なmappingで扱う。rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
-            Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示する。
+            routeの候補順は proto、nix、mise、asdf、brew、system、official、uv-tool、skip とする。候補順は表示と数値選択の順序および空入力時のfallback優先度を定める。
+            protoが利用可能な対象ではprotoを既定とし、protoが利用できない対象では候補順の先頭にある利用可能なrouteを既定とする。system、brew、official、uv-toolはproto非対応時のfallbackを担う。
+            system と brew の明示的なpackage mapping、rtk・codegraphのofficial、Serenaのuv-toolの既存scope契約は維持する。Serenaだけは例外として候補をuv-tool、skipに限定し、uv-toolを既定とする。
+            Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示し、その他のrouteは表示しない。
             選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-009-node-tool-installation.md"
+          link: "records/dev-tools-010-proto-priority-and-dynamic-capability.md"
           sub_decisions: []
 
         - id: installer-011-9-helper-destination
@@ -477,8 +483,9 @@ decisions:
 
         - id: installer-011-21-dry-run-preview
           decision: >
-            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序（nix、proto、mise、asdf、brew、system、official、uv-tool、skip）、
+            `install --dry-run` は不足ツールの現在検出、既存のmanager-specific capability probe、alias normalization、route順序（proto、nix、mise、asdf、brew、system、official、uv-tool、skip）、
             `--global`候補制限、interactive時の一回のroute選択だけを行い、実際の導入を開始しない読み取りpreviewとする。
+            Serenaだけはroute候補をuv-tool、skipに限定し、uv-toolを既定とする。
             既存ツールは `present` として再導入せず、不足ツールは選択またはTTYなし時のconfigured default routeを `planned` として表示する。利用可能な導入経路がない、または `skip` が選ばれた対象は `skip` と表示する。
             各対象のplanned detailには実際のinstall routeが使うmanager、package/plugin/identifier、主要install commandを含め、preview表示のcommandは実行しない。official routeは対象ツールの既存installer URL mappingを根拠にplanned commandを表示し、curlの現在の実行可能性はpreview候補の条件にしない。system package manager、nix、proto、mise、asdf、brew、official installer、uv tool install、manager/plugin導入、officialのnetwork pipeline、install後のPATH refresh、AGENTS.md・project・shell・manager設定変更は行わず、既存のread-only capability probeだけを許可する。
             preview対象を最後まで処理し、preview結果を表示できれば終了statusは0とする。引数エラーまたはplanned command生成自体の失敗は非0とする。`--global` は既存のglobal install scopeをroute候補とplanned commandへ適用し、`--debug` は実行されないinstall commandのtraceを追加せず、表示されたplanned detailを診断情報とする。

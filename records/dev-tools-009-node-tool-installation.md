@@ -51,3 +51,36 @@
 ### Entry 0004 (2026-08-09)
 - Implementation-validation result: PASS. `bash tests/dev-tools.test.sh` passed 21 focused tests, `bash tests/first-setup.test.sh` passed 1 focused test, and `bash tests/install.test.sh` passed 18 focused tests. Bash syntax checks for the affected helpers and tests passed; editor diagnostics, `git diff --check`, YAML parsing, and recursive decision-ID uniqueness checks also passed.
 - Artifact alignment: The canonical tool order, Node command fallback, manager identifiers, route scope, README inventory, focused tests, and linked decision record agree. The test suite uses deterministic mocks; no live third-party installation was performed.
+
+### Entry 0006 (2026-08-09)
+- Discussion-validation: PASS. The bounded re-scan covered the proto mapping and capability gate, the shared proto install and dry-run command builders, route ordering and global filtering, focused route tests, the active Node backend contract, and the existing prebuilt/source-build split.
+- Directional fit: Adding the proto choice directly addresses the reported missing option. The installed proto 0.59.0 returned Node versions from `proto versions node --json` and identified the built-in `node` plugin as Node.js, so the prior exclusion was based on insufficient evidence rather than an unsupported target.
+- Contract fit: The candidate keeps Linux/WSL scope, explicit non-mutating route selection, manager/plugin non-installation, `--global` exclusion of proto, process-scoped proto activation, dry-run command fidelity, and no source-build fallback. Node uses the existing prebuilt proto contract and therefore must use `--no-build`.
+- Hidden bindings: The proto route must be added to the existing Node mapping sub-decision and the prebuilt proto sub-decision must name Node alongside Python. The helper must not add a remote version-list probe; the explicit `node` mapping remains the route capability contract.
+- Promotion targets: Update `installer-011-2-1-proto-prebuilt` and `installer-011-2-4-node-installation-mapping`; keep the existing parent backend, route-order, global-scope, command-verification, post-install activation, and documentation contracts aligned through their inherited route behavior.
+- Validation result: PASS. The candidate satisfies the original request and current constraints, and focused tests can disprove missing proto mapping, incorrect build mode, route-order drift, and accidental global proto exposure.
+- Promotion to DECISIONS.yml: ready -> `installer-011-2-1-proto-prebuilt`, `installer-011-2-4-node-installation-mapping`
+- Evidence / references: `templates/dev-tools.sh`; `tests/dev-tools.test.sh`; `DECISIONS.yml`; proto 0.59.0; `proto versions node --json`; `proto status --json`
+
+### Entry 0007 (2026-08-09)
+- Implementation result: `templates/dev-tools.sh` now maps Node.js to the existing proto backend and uses `proto install node latest --no-build --yes`, while the shared route probe, post-install activation, status verification, and AGENTS.md synchronization remain unchanged.
+- Test result: The focused Node route test passed after failing first on the missing proto mapping. The complete focused suites passed: `bash tests/dev-tools.test.sh` (21), `bash tests/first-setup.test.sh` (1), and `bash tests/install.test.sh` (18).
+- Implementation-validation result: PASS. Shell syntax, `git diff --check`, and VS Code diagnostics passed for the changed artifacts. The route list includes proto for Node in normal scope and excludes it under `--global`; planned and executed commands both use the prebuilt `--no-build` mode.
+- Scope preserved: No proto remote version-list probe, source-build fallback, official Node installer, npm/pnpm package installation, project initialization, first-setup package change, or install.sh distribution change was added. No live Node installation was performed; proto capability was verified read-only.
+- Evidence / references: `templates/dev-tools.sh`; `tests/dev-tools.test.sh`; `tests/first-setup.test.sh`; `tests/install.test.sh`; `DECISIONS.yml`
+
+### Entry 0005 (2026-08-09)
+- Why now: The user reported that Node.js did not show a proto installation choice and asked whether the capability check was failing.
+- Broad-scan findings:
+  - The helper's `proto_tool_for_tool` and `proto_build_mode_for_tool` accept only Python and Ruby. `proto_route_available node` therefore returns before running the common `proto install --help` probe; the missing choice is an intentional mapping exclusion, not a failed Node capability check.
+  - The installed proto 0.59.0 confirms Node support without installing it: `proto versions node --json` returns Node versions, and `proto status --json` lists the built-in `node` plugin as Node.js. The helper must not run remote version discovery during route selection because the existing contract limits probes to non-mutating checks and explicit mappings.
+  - The existing proto install and dry-run paths both consume `proto_tool_for_tool` and `proto_build_mode_for_tool`, so one explicit Node mapping can keep the displayed and executed commands aligned.
+- Focus areas:
+  - Add `node` to the proto tool mapping and use the prebuilt command `proto install node latest --no-build --yes`.
+  - Verify the proto route appears only when the existing proto binary/help probe succeeds, preserve the existing route order and `--global` filtering, and cover both planned and mocked execution commands.
+  - Update the active Node installation contract and this record so the corrected proto scope is no longer contradicted by the previous exclusion.
+- Explicit exclusions: Do not add proto remote version discovery to route selection, source-build fallback, an official Node installer, npm/pnpm package installation, project initialization, first-setup package changes, or install.sh distribution changes.
+- Current conclusion: Node.js is a confirmed proto target and should use the existing proto prebuilt route. The prior proto exclusion was based on insufficient local evidence and is superseded by the read-only version/plugin confirmation.
+- Next validation target: Confirm the focused route test can disprove missing proto mapping, incorrect `--no-build` command generation, route-order drift, and accidental global proto exposure before promotion.
+- Promotion to DECISIONS.yml: pending
+- Evidence / references: `templates/dev-tools.sh`; `tests/dev-tools.test.sh`; `DECISIONS.yml`; proto 0.59.0; `proto versions node --json`; `proto status --json`

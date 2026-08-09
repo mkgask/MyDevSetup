@@ -188,23 +188,26 @@ test_route_filtering() {
 	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
 	write_mock_command "$MOCK_BIN/nix" \
 		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
-		'if [[ "${1:-}" == "eval" ]]; then case "$*" in *"nixpkgs#python3.name"*|*"nixpkgs#ruby.name"*|*"nixpkgs#ripgrep.name"*) exit 0 ;; *) exit 1 ;; esac; fi' \
+		'if [[ "${1:-}" == "eval" ]]; then case "$*" in *"nixpkgs#python3.name"*|*"nixpkgs#ruby.name"*|*"nixpkgs#ripgrep.name"*|*"nixpkgs#serena.name"*) exit 0 ;; *) exit 1 ;; esac; fi' \
 		'exit 1'
-	write_mock_command "$MOCK_BIN/proto" 'exit 0'
+	write_mock_command "$MOCK_BIN/proto" \
+		'if [[ "${1:-}" == "install" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "versions" ]]; then [[ "${2:-}" == "python" || "${2:-}" == "ruby" || "${2:-}" == "node" || "${2:-}" == "uv" || "${2:-}" == "serena" ]]; exit $?; fi' \
+		'exit 1'
 	write_mock_command "$MOCK_BIN/mise" \
 		'if [[ "${1:-}" != "registry" ]]; then exit 1; fi' \
-		'[[ "${2:-}" == "python" || "${2:-}" == "ruby" || "${2:-}" == "ripgrep" || "${2:-}" == "rtk" ]]'
+		'[[ "${2:-}" == "python" || "${2:-}" == "ruby" || "${2:-}" == "ripgrep" || "${2:-}" == "rtk" || "${2:-}" == "serena" ]]'
 	write_mock_command "$MOCK_BIN/asdf" \
-		'if [[ "${1:-}" == "plugin" ]]; then printf "%s\\n" python ruby ripgrep rtk; fi'
+		'if [[ "${1:-}" == "plugin" ]]; then printf "%s\\n" python ruby ripgrep rtk serena; fi'
 	write_mock_command "$MOCK_BIN/curl" 'exit 0'
 
 	source "$HELPER_PATH"
 
 	routes="$(available_routes_for_tool python)"
-	assert_equal $'nix\nproto\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'python route filtering' || return 1
+	assert_equal $'proto\nnix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'python route filtering' || return 1
 
 	routes="$(available_routes_for_tool ruby)"
-	assert_equal $'nix\nproto\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'ruby source-build proto route' || return 1
+	assert_equal $'proto\nnix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'ruby source-build proto route' || return 1
 
 	routes="$(available_routes_for_tool rg)"
 	assert_equal $'nix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'rg route filtering' || return 1
@@ -216,10 +219,27 @@ test_route_filtering() {
 	assert_equal $'official\nskip' "$routes" 'codegraph route filtering' || return 1
 
 	routes="$(available_routes_for_tool uv)"
-	assert_equal $'official\nskip' "$routes" 'uv official route filtering' || return 1
+	assert_equal $'proto\nofficial\nskip' "$routes" 'uv proto-first route filtering' || return 1
 
 	routes="$(available_routes_for_tool serena)"
 	assert_equal $'skip' "$routes" 'Serena requires uv for route filtering' || return 1
+	assert_equal 'uv-tool' "$(default_route_for_tool serena)" 'Serena default route is uv-tool' || return 1
+	if proto_tool_for_tool serena >/dev/null 2>&1; then
+		fail_test 'Serena has no proto identifier mapping'
+		return 1
+	fi
+	if nix_package_for_tool serena >/dev/null 2>&1; then
+		fail_test 'Serena has no Nix package mapping'
+		return 1
+	fi
+	if mise_tool_for_tool serena >/dev/null 2>&1; then
+		fail_test 'Serena has no mise identifier mapping'
+		return 1
+	fi
+	if asdf_plugin_for_tool serena >/dev/null 2>&1; then
+		fail_test 'Serena has no asdf plugin mapping'
+		return 1
+	fi
 
 	write_mock_command "$MOCK_BIN/uv" 'exit 0'
 	routes="$(available_routes_for_tool serena)"
@@ -275,8 +295,8 @@ test_brew_route_is_explicit() {
 	assert_equal $'uv-tool\nskip' "$routes" 'global Serena route filtering' || return 1
 	GLOBAL_INSTALL=0
 
-	assert_equal 'system' "$(default_available_route_for_tool python)" 'python keeps the configured system default' || return 1
-	assert_equal 'official' "$(default_available_route_for_tool rtk)" 'RTK keeps the configured official default' || return 1
+	assert_equal 'proto' "$(default_available_route_for_tool python)" 'python prefers the available proto route' || return 1
+	assert_equal 'mise' "$(default_available_route_for_tool rtk)" 'RTK falls back to the first available route' || return 1
 	assert_equal 'python' "$(system_package_for_tool python brew)" 'Homebrew Python package' || return 1
 
 	write_mock_command "$MOCK_BIN/proto" \
@@ -330,6 +350,13 @@ test_node_route_mappings() {
 	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
 	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
 	write_mock_command "$MOCK_BIN/brew" 'exit 0'
+	write_mock_command "$MOCK_BIN/proto" \
+		'if [[ "${1:-}" == "install" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "versions" ]]; then [[ "${2:-}" == "node" ]]; exit $?; fi' \
+		'if [[ "${1:-}" == "install" ]]; then printf "%s\\n" "$*" >> "$MOCK_LOG"; exit 0; fi' \
+		'if [[ "${1:-}" == "bin" ]]; then printf "%s\\n" "$MOCK_BIN/node"; exit 0; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/node" 'exit 0'
 	write_mock_command "$MOCK_BIN/nix" \
 		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
 		'if [[ "${1:-}" == "eval" ]]; then [[ "$*" == *"nixpkgs#nodejs.name"* ]]; exit $?; fi' \
@@ -349,10 +376,10 @@ test_node_route_mappings() {
 	assert_equal 'nodejs' "$(nix_package_for_tool node)" 'Nix Node package mapping' || return 1
 	assert_equal 'node' "$(mise_tool_for_tool node)" 'mise Node identifier' || return 1
 	assert_equal 'nodejs' "$(asdf_plugin_for_tool node)" 'asdf Node plugin alias' || return 1
-	assert_equal 'system' "$(default_route_for_tool node)" 'Node default route' || return 1
+	assert_equal 'proto' "$(default_route_for_tool node)" 'Node default route' || return 1
 
 	routes="$(available_routes_for_tool node)"
-	assert_equal $'nix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'Node route filtering' || return 1
+	assert_equal $'proto\nnix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'Node route filtering' || return 1
 
 	GLOBAL_INSTALL=1
 	global_routes="$(available_routes_for_tool node)"
@@ -366,9 +393,42 @@ test_node_route_mappings() {
 	fi
 	assert_equal "$expected_system_command" "$(planned_install_command_for_route node system)" 'Node system planned command' || return 1
 	assert_equal 'nix profile install nixpkgs#nodejs' "$(planned_install_command_for_route node nix)" 'Node Nix planned command' || return 1
+	assert_equal 'proto install node latest --no-build --yes' "$(planned_install_command_for_route node proto)" 'Node proto planned command' || return 1
 	assert_equal 'mise install node@latest' "$(planned_install_command_for_route node mise)" 'Node mise planned command' || return 1
 	assert_equal 'asdf install nodejs latest' "$(planned_install_command_for_route node asdf)" 'Node asdf planned command' || return 1
 	assert_equal 'brew install node' "$(planned_install_command_for_route node brew)" 'Node Homebrew planned command' || return 1
+
+	install_with_proto node
+	assert_contains 'install node latest --no-build --yes' "$MOCK_LOG" 'Node proto installation uses the prebuilt command' || return 1
+}
+
+test_proto_capability_probe_and_fallback() {
+	local routes=""
+	local proto_versions_calls=""
+
+	prepare_mock_environment proto-capability-probe
+	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
+	write_mock_command "$MOCK_BIN/mise" \
+		'if [[ "${1:-}" == "registry" ]]; then [[ "${2:-}" == "node" ]]; exit $?; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/proto" \
+		'if [[ "${1:-}" == "install" && "${2:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "versions" ]]; then printf "versions %s\\n" "$2" >> "$MOCK_LOG"; [[ "${2:-}" == "node" && "${MOCK_PROTO_FAIL_NODE:-0}" != "1" ]]; exit $?; fi' \
+		'exit 1'
+	source "$HELPER_PATH"
+
+	routes="$(available_routes_for_tool node)"
+	assert_equal $'proto\nmise\nsystem\nskip' "$routes" 'proto capability enables the Node route' || return 1
+	assert_equal 'proto' "$(default_available_route_for_tool node)" 'proto capability selects the Node default' || return 1
+	proto_versions_calls="$(grep -c '^versions node$' "$MOCK_LOG" || true)"
+	assert_equal '1' "$proto_versions_calls" 'cache the Node proto capability result within one helper process' || return 1
+
+	: > "$PROTO_TOOL_CAPABILITY_CACHE_FILE"
+	MOCK_PROTO_FAIL_NODE=1
+	export MOCK_PROTO_FAIL_NODE
+	routes="$(available_routes_for_tool node)"
+	assert_equal $'mise\nsystem\nskip' "$routes" 'unsupported proto falls back to other available routes' || return 1
+	assert_equal 'mise' "$(default_available_route_for_tool node)" 'fallback default uses the first available non-proto route' || return 1
 }
 
 test_no_empty_agents_file() {
@@ -773,6 +833,8 @@ test_dry_run_planned_commands() {
 	assert_equal 'nix profile install nixpkgs#python3' "$(planned_install_command_for_route python nix)" 'preview nix command' || return 1
 	assert_equal 'nix profile install nixpkgs#nodejs' "$(planned_install_command_for_route node nix)" 'preview Node nix command' || return 1
 	assert_equal 'proto install python latest --no-build --yes' "$(planned_install_command_for_route python proto)" 'preview proto prebuilt command' || return 1
+	assert_equal 'proto install node latest --no-build --yes' "$(planned_install_command_for_route node proto)" 'preview Node proto prebuilt command' || return 1
+	assert_equal 'proto install uv latest --no-build --yes' "$(planned_install_command_for_route uv proto)" 'preview uv proto prebuilt command' || return 1
 	assert_equal 'mise install python@latest' "$(planned_install_command_for_route python mise)" 'preview mise command' || return 1
 	assert_equal 'mise install node@latest' "$(planned_install_command_for_route node mise)" 'preview Node mise command' || return 1
 	assert_equal 'asdf install ripgrep latest' "$(planned_install_command_for_route rg asdf)" 'preview asdf alias command' || return 1
@@ -1055,6 +1117,7 @@ test_proto_source_dependency_aliases() {
 		'package_name="${@: -1}"' \
 		'case "$package_name" in libreadline-dev|libncurses-dev|libgdbm6t64) printf "%s" "install ok installed" ;; *) exit 1 ;; esac'
 	write_mock_command "$MOCK_BIN/proto" \
+		'if [[ "${1:-}" == "versions" && "${2:-}" == "ruby" ]]; then exit 0; fi' \
 		'if [[ "${1:-}" == "install" ]]; then printf "env=%s args=%s\\n" "${PROTO_BUILD_EXCLUDE_PACKAGES:-}" "$*" >> "$MOCK_LOG"; exit 0; fi' \
 		'if [[ "${1:-}" == "bin" ]]; then printf "%s\\n" "$MOCK_BIN/ruby"; exit 0; fi' \
 		'exit 1'
@@ -1267,6 +1330,7 @@ run_test 'route filtering' test_route_filtering
 run_test 'explicit brew route' test_brew_route_is_explicit
 run_test 'manager capability probes' test_manager_capability_probes
 run_test 'Node route mappings' test_node_route_mappings
+run_test 'proto capability probe and fallback' test_proto_capability_probe_and_fallback
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
 run_test 'AGENTS.md managed block' test_agents_block_is_additive_idempotent_and_migrates_descriptions
 run_test 'interactive install and failure continuation' test_interactive_install_and_failure_continuation
