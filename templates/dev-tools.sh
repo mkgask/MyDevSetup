@@ -1467,6 +1467,9 @@ agents_contains_tool() {
 		python)
 			pattern='(^|[^[:alnum:]_-])python(3)?([^[:alnum:]_-]|$)'
 			;;
+		rg)
+			pattern='(^|[^[:alnum:]_-])(rg|ripgrep)([^[:alnum:]_-]|$)'
+			;;
 		*)
 			pattern="(^|[^[:alnum:]_-])${tool_name}([^[:alnum:]_-]|$)"
 			;;
@@ -1475,9 +1478,53 @@ agents_contains_tool() {
 	grep -Eqi "$pattern" "$AGENTS_PATH"
 }
 
+agents_display_name_for_tool() {
+	local tool_name="$1"
+
+	case "$tool_name" in
+		rg)
+			printf '%s\n' ripgrep
+			;;
+		*)
+			printf '%s\n' "$tool_name"
+			;;
+	esac
+}
+
+agents_description_for_tool() {
+	local tool_name="$1"
+
+	case "$tool_name" in
+		rg)
+			printf '%s\n' 'Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.'
+			;;
+		rtk)
+			printf '%s\n' 'High-performance output-filtering/compression proxy for LLM context. Use rtk --help; useful subcommands include ls, tree, read, git, psql, pnpm, json, env, find, diff, log, grep, and npx.'
+			;;
+		codegraph)
+			printf '%s\n' 'Maps code to tests, breakage, affected flows, and business-logic risk.'
+			;;
+	esac
+}
+
+agents_entry_for_tool() {
+	local tool_name="$1"
+	local command_name="${NEW_TOOL_COMMANDS[$tool_name]:-${TOOL_COMMANDS[$tool_name]:-}}"
+	local display_name=""
+	local description=""
+
+	display_name="$(agents_display_name_for_tool "$tool_name")"
+	description="$(agents_description_for_tool "$tool_name")"
+
+	if [[ -n "$description" ]]; then
+		printf -- '- `%s`: `%s` - %s\n' "$display_name" "$command_name" "$description"
+	else
+		printf -- '- `%s`: `%s`\n' "$display_name" "$command_name"
+	fi
+}
+
 build_new_agents_entries() {
 	local tool_name=""
-	local command_name=""
 
 	for tool_name in "${TOOL_NAMES[@]}"; do
 		if [[ -z "${NEW_TOOL_COMMANDS[$tool_name]:-}" ]]; then
@@ -1488,15 +1535,31 @@ build_new_agents_entries() {
 			continue
 		fi
 
-		command_name="${NEW_TOOL_COMMANDS[$tool_name]}"
-		printf -- '- `%s`: `%s`\n' "$tool_name" "$command_name"
+		agents_entry_for_tool "$tool_name"
+	done
+}
+
+build_managed_agents_replacements() {
+	local tool_name=""
+	local display_name=""
+	local description=""
+
+	for tool_name in rg rtk codegraph; do
+		display_name="$(agents_display_name_for_tool "$tool_name")"
+		description="$(agents_description_for_tool "$tool_name")"
+		printf '%s\t%s\t%s\n' "$tool_name" "$display_name" "$description"
+		if [[ "$tool_name" == "rg" ]]; then
+			printf '%s\t%s\t%s\n' "$display_name" "$display_name" "$description"
+		fi
 	done
 }
 
 update_agents_managed_block() {
 	local additions_file=""
+	local replacements_file=""
 	local temporary_file=""
 	local addition_count=0
+	local replacement_count=0
 	local begin_count=0
 	local end_count=0
 	local agents_directory=""
@@ -1513,15 +1576,22 @@ update_agents_managed_block() {
 	fi
 
 	additions_file="$(mktemp)"
+	replacements_file="$(mktemp)"
 	build_new_agents_entries > "$additions_file"
+	build_managed_agents_replacements > "$replacements_file"
 	addition_count="$(wc -l < "$additions_file")"
-	if [[ "$addition_count" -eq 0 ]]; then
+	replacement_count="$(wc -l < "$replacements_file")"
+	begin_count="$(grep -Fxc "$MANAGED_BLOCK_BEGIN" "$AGENTS_PATH" || true)"
+	end_count="$(grep -Fxc "$MANAGED_BLOCK_END" "$AGENTS_PATH" || true)"
+	if [[ "$addition_count" -eq 0 ]] && { [[ "$begin_count" -eq 0 && "$end_count" -eq 0 ]] || [[ "$replacement_count" -eq 0 ]]; }; then
 		rm -f "$additions_file"
+		rm -f "$replacements_file"
 		return 0
 	fi
 
 	if [[ -e "$AGENTS_PATH" && ! -w "$AGENTS_PATH" ]]; then
 		rm -f "$additions_file"
+		rm -f "$replacements_file"
 		log_error "Cannot safely update AGENTS.md: $AGENTS_PATH"
 		return 1
 	fi
@@ -1532,22 +1602,68 @@ update_agents_managed_block() {
 		: > "$AGENTS_PATH"
 	fi
 
-	begin_count="$(grep -Fxc "$MANAGED_BLOCK_BEGIN" "$AGENTS_PATH" || true)"
-	end_count="$(grep -Fxc "$MANAGED_BLOCK_END" "$AGENTS_PATH" || true)"
 	if [[ "$begin_count" -eq 1 && "$end_count" -eq 1 ]]; then
 		temporary_file="$(mktemp)"
-		awk -v end_marker="$MANAGED_BLOCK_END" -v additions_path="$additions_file" '
+		awk -v begin_marker="$MANAGED_BLOCK_BEGIN" -v end_marker="$MANAGED_BLOCK_END" -v additions_path="$additions_file" -v replacements_path="$replacements_file" '
+			BEGIN {
+				while ((getline replacement < replacements_path) > 0) {
+					separator = index(replacement, "\t")
+					if (separator > 0) {
+						replacement_tool = substr(replacement, 1, separator - 1)
+						replacement_data = substr(replacement, separator + 1)
+						description_separator = index(replacement_data, "\t")
+						if (description_separator > 0) {
+							replacement_display = substr(replacement_data, 1, description_separator - 1)
+							replacement_description = substr(replacement_data, description_separator + 1)
+							display_names[replacement_tool] = replacement_display
+							descriptions[replacement_tool] = replacement_description
+						}
+					}
+				}
+				close(replacements_path)
+				inside_managed_block = 0
+			}
+			$0 == begin_marker {
+				inside_managed_block = 1
+				print
+				next
+			}
 			$0 == end_marker {
 				while ((getline addition < additions_path) > 0) {
 					print addition
 				}
 				close(additions_path)
+				inside_managed_block = 0
+				print
+				next
+			}
+			inside_managed_block {
+				if (substr($0, 1, 3) == "- `") {
+					remainder = substr($0, 4)
+					closing_tick = index(remainder, "`")
+					if (closing_tick > 0) {
+						tool_name = substr(remainder, 1, closing_tick - 1)
+						if (tool_name in descriptions) {
+							command_marker = index($0, ": `")
+							if (command_marker > 0) {
+								command_remainder = substr($0, command_marker + 3)
+								command_end = index(command_remainder, "`")
+								if (command_end > 0) {
+									command_name = substr(command_remainder, 1, command_end - 1)
+									print sprintf("- `%s`: `%s` - %s", display_names[tool_name], command_name, descriptions[tool_name])
+									next
+								}
+							}
+						}
+					}
+				}
 			}
 			{ print }
 		' "$AGENTS_PATH" > "$temporary_file"
 	else
 		if [[ "$begin_count" -ne 0 || "$end_count" -ne 0 ]]; then
 			rm -f "$additions_file"
+			rm -f "$replacements_file"
 			log_error "Cannot update incomplete AGENTS.md managed block"
 			return 1
 		fi
@@ -1572,6 +1688,7 @@ update_agents_managed_block() {
 	chmod --reference="$AGENTS_PATH" "$temporary_file" 2>/dev/null || true
 	mv "$temporary_file" "$AGENTS_PATH"
 	rm -f "$additions_file"
+	rm -f "$replacements_file"
 	log_success "Updated the managed development-tools block in $AGENTS_PATH"
 }
 

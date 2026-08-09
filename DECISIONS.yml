@@ -303,10 +303,18 @@ decisions:
           decision: >
             install で導入に成功した新規ツールのうち AGENTS.md に未記載のものだけを、全ツール処理の最後に管理ブロックとして冪等に追記する。
             これはテンプレート全体の上書き許可とは独立した add-only 操作として、`--overwrite` の指定にかかわらず許可し、既存のテンプレート全体上書き保護は維持する。
-            管理ブロックが既にあれば同ブロックだけを更新し、細かな説明は追加しない。uv と Serena も検証できた `uv` と `serena` のコマンド名で他対象と同じ規則に従う。
+            管理ブロックが既にあれば同ブロックだけを更新し、ユーザー本文や管理ブロック外の既存記載は変更しない。`ripgrep`（コマンドは `rg`）、`rtk`、`codegraph` については compact tool description の sub-decision に従う。
+            uv と Serena も検証できた `uv` と `serena` のコマンド名で他対象と同じ規則に従う。
             明示的な init では、公式ツールが現在プロジェクトで通常行う設定変更をこの install の記録処理とは別に許可する。
           status: "✅️Implementation Approved"
-          sub_decisions: []
+          link: "records/dev-tools-007-agents-tool-descriptions.md"
+          sub_decisions:
+            - id: installer-011-6-1-compact-tool-descriptions
+              decision: >
+                install で新規導入に成功した `ripgrep`（コマンドは `rg`）、`rtk`、`codegraph` の管理ブロック行は、検証済みコマンドの後ろへそれぞれ次の短い説明を付ける。`ripgrep`: `Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.`。`rtk`: `High-performance output-filtering/compression proxy for LLM context. Use rtk --help; useful subcommands include ls, tree, read, git, psql, pnpm, json, env, find, diff, log, grep, and npx.`。`codegraph`: `Maps code to tests, breakage, affected flows, and business-logic risk.`。非 dry-run の install で既存の対象行が管理ブロック内にある場合は、新規導入結果の有無にかかわらずその行の説明だけをこの形式へ更新し、既存の command token を保持する。管理ブロック外の同名記載は変更せず、管理ブロック内に対象行がなければ対象行を追加しない。説明は短い固定文とし、他ツールの既存 `tool: command` 形式は維持する。
+              status: "✅️Implementation Approved"
+              link: "records/dev-tools-007-agents-tool-descriptions.md"
+              sub_decisions: []
 
         - id: installer-011-7-dev-tools-helper-boundary
           decision: >

@@ -334,9 +334,13 @@ test_no_empty_agents_file() {
 	fi
 }
 
-test_agents_block_is_add_only_and_idempotent() {
+test_agents_block_is_additive_idempotent_and_migrates_descriptions() {
 	local first_snapshot="$MOCK_ROOT/first.snapshot"
 	local second_snapshot="$MOCK_ROOT/second.snapshot"
+	local expected_ripgrep_entry='- `ripgrep`: `rg` - Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.'
+	local expected_custom_ripgrep_entry='- `ripgrep`: `custom-rg` - Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.'
+	local expected_rtk_entry='- `rtk`: `rtk` - High-performance output-filtering/compression proxy for LLM context. Use rtk --help; useful subcommands include ls, tree, read, git, psql, pnpm, json, env, find, diff, log, grep, and npx.'
+	local expected_codegraph_entry='- `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.'
 
 	prepare_mock_environment agents-block
 	source "$HELPER_PATH"
@@ -344,19 +348,33 @@ test_agents_block_is_add_only_and_idempotent() {
 	AGENTS_PATH="$MOCK_AGENTS"
 	NEW_TOOL_COMMANDS[python]=python3
 	NEW_TOOL_COMMANDS[rg]=rg
+	NEW_TOOL_COMMANDS[rtk]=rtk
+	NEW_TOOL_COMMANDS[codegraph]=codegraph
 	update_agents_managed_block
 
 	assert_contains '# user content' "$AGENTS_PATH" 'preserve existing AGENTS.md content' || return 1
 	assert_contains "$MANAGED_BLOCK_BEGIN" "$AGENTS_PATH" 'create managed block marker' || return 1
 	assert_contains '- `python`: `python3`' "$AGENTS_PATH" 'record python command' || return 1
-	assert_contains '- `rg`: `rg`' "$AGENTS_PATH" 'record rg command' || return 1
+	assert_contains "$expected_ripgrep_entry" "$AGENTS_PATH" 'record ripgrep description' || return 1
+	assert_contains "$expected_rtk_entry" "$AGENTS_PATH" 'record rtk description' || return 1
+	assert_contains "$expected_codegraph_entry" "$AGENTS_PATH" 'record CodeGraph description' || return 1
+	assert_not_contains 'python3` -' "$AGENTS_PATH" 'keep Python command-only entry' || return 1
 
 	cp "$AGENTS_PATH" "$first_snapshot"
 	update_agents_managed_block
 	cp "$AGENTS_PATH" "$second_snapshot"
 	cmp -s "$first_snapshot" "$second_snapshot"
 
-	printf '%s\n' '# keep this' "$MANAGED_BLOCK_BEGIN" '## Installed development tools' '- `python`: `python3`' "$MANAGED_BLOCK_END" > "$AGENTS_PATH"
+	printf '%s\n' '# keep this' '- `ripgrep`: `user-owned`' "$MANAGED_BLOCK_BEGIN" '## Installed development tools' '- `python`: `python3`' '- `rg`: `custom-rg`' '- `rtk`: `rtk`' '- `codegraph`: `codegraph`' "$MANAGED_BLOCK_END" > "$AGENTS_PATH"
+	NEW_TOOL_COMMANDS=()
+	update_agents_managed_block
+	assert_contains '- `ripgrep`: `user-owned`' "$AGENTS_PATH" 'preserve user-owned tool content' || return 1
+	assert_line_count '1' "$expected_custom_ripgrep_entry" "$AGENTS_PATH" 'migrate the managed ripgrep entry and preserve its command' || return 1
+	assert_line_count '1' "$expected_rtk_entry" "$AGENTS_PATH" 'migrate the managed rtk entry' || return 1
+	assert_line_count '1' "$expected_codegraph_entry" "$AGENTS_PATH" 'migrate the managed CodeGraph entry' || return 1
+	assert_contains '- `python`: `python3`' "$AGENTS_PATH" 'preserve existing managed command-only entry' || return 1
+
+	NEW_TOOL_COMMANDS=()
 	NEW_TOOL_COMMANDS[ruby]=ruby
 	update_agents_managed_block
 	assert_contains '# keep this' "$AGENTS_PATH" 'preserve managed-block surrounding content' || return 1
@@ -364,6 +382,7 @@ test_agents_block_is_add_only_and_idempotent() {
 	assert_contains '- `python`: `python3`' "$AGENTS_PATH" 'preserve existing managed-block entry' || return 1
 
 	printf '%s\n' '# incomplete' "$MANAGED_BLOCK_BEGIN" > "$AGENTS_PATH"
+	NEW_TOOL_COMMANDS=()
 	NEW_TOOL_COMMANDS[rg]=rg
 	if update_agents_managed_block; then
 		fail_test 'incomplete managed block was accepted'
@@ -387,9 +406,9 @@ test_interactive_install_and_failure_continuation() {
 	assert_contains 'Development-tool summary:' "$MOCK_ROOT/output.log.stdout" 'print final summary' || return 1
 	assert_contains '- `python`: `python3`' "$MOCK_AGENTS" 'record installed python' || return 1
 	assert_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'record installed ruby' || return 1
-	assert_contains '- `rg`: `rg`' "$MOCK_AGENTS" 'record installed rg' || return 1
-	assert_contains '- `rtk`: `rtk`' "$MOCK_AGENTS" 'record installed rtk' || return 1
-	assert_contains '- `codegraph`: `codegraph`' "$MOCK_AGENTS" 'record installed codegraph' || return 1
+	assert_contains '- `ripgrep`: `rg` - Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.' "$MOCK_AGENTS" 'record installed ripgrep description' || return 1
+	assert_contains '- `rtk`: `rtk` - High-performance output-filtering/compression proxy for LLM context. Use rtk --help; useful subcommands include ls, tree, read, git, psql, pnpm, json, env, find, diff, log, grep, and npx.' "$MOCK_AGENTS" 'record installed rtk description' || return 1
+	assert_contains '- `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.' "$MOCK_AGENTS" 'record installed CodeGraph description' || return 1
 	assert_contains '- `uv`: `uv`' "$MOCK_AGENTS" 'record installed uv' || return 1
 	assert_contains '- `serena`: `serena`' "$MOCK_AGENTS" 'record installed Serena' || return 1
 
@@ -935,7 +954,7 @@ test_default_route_and_skip_selection() {
 	assert_contains '- `python`: `python3`' "$MOCK_AGENTS" 'record default-installed python' || return 1
 	assert_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'record default-installed ruby' || return 1
 	assert_contains '- `rtk`: `rtk`' "$MOCK_AGENTS" 'record default-installed rtk' || return 1
-	assert_not_contains '- `rg`: `rg`' "$MOCK_AGENTS" 'do not record skipped rg' || return 1
+	assert_not_contains '- `ripgrep`: `rg`' "$MOCK_AGENTS" 'do not record skipped ripgrep' || return 1
 	assert_not_contains '- `codegraph`: `codegraph`' "$MOCK_AGENTS" 'do not record skipped codegraph' || return 1
 }
 
@@ -1159,7 +1178,7 @@ run_test 'route filtering' test_route_filtering
 run_test 'explicit brew route' test_brew_route_is_explicit
 run_test 'manager capability probes' test_manager_capability_probes
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
-run_test 'AGENTS.md managed block' test_agents_block_is_add_only_and_idempotent
+run_test 'AGENTS.md managed block' test_agents_block_is_additive_idempotent_and_migrates_descriptions
 run_test 'interactive install and failure continuation' test_interactive_install_and_failure_continuation
 run_test 'uv dependency failure' test_uv_dependency_failure
 run_test 'debug flag and verification failure' test_debug_flag_and_verification_failure
