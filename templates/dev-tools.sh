@@ -1458,6 +1458,38 @@ process_tool() {
 # ---
 # Utils AGENTS.md
 
+agents_tool_is_verified() {
+	local tool_name="$1"
+	local result_name="${TOOL_RESULTS[$tool_name]:-}"
+
+	case "$result_name" in
+		present|installed)
+			return 0
+			;;
+		*)
+			[[ -n "${NEW_TOOL_COMMANDS[$tool_name]:-}" ]]
+			;;
+	esac
+}
+
+agents_command_for_tool() {
+	local tool_name="$1"
+	local result_name="${TOOL_RESULTS[$tool_name]:-}"
+	local command_name=""
+
+	if [[ "$result_name" == "installed" ]]; then
+		command_name="${NEW_TOOL_COMMANDS[$tool_name]:-}"
+	elif [[ "$result_name" == "present" ]]; then
+		command_name="${TOOL_RESULT_DETAILS[$tool_name]:-}"
+	fi
+
+	if [[ -z "$command_name" ]]; then
+		command_name="${NEW_TOOL_COMMANDS[$tool_name]:-${TOOL_RESULT_DETAILS[$tool_name]:-${TOOL_COMMANDS[$tool_name]:-}}}"
+	fi
+
+	printf '%s\n' "$command_name"
+}
+
 agents_contains_tool() {
 	local tool_name="$1"
 	local pattern=""
@@ -1510,10 +1542,11 @@ agents_description_for_tool() {
 
 agents_entry_for_tool() {
 	local tool_name="$1"
-	local command_name="${NEW_TOOL_COMMANDS[$tool_name]:-${TOOL_COMMANDS[$tool_name]:-}}"
+	local command_name=""
 	local display_name=""
 	local description=""
 
+	command_name="$(agents_command_for_tool "$tool_name")"
 	display_name="$(agents_display_name_for_tool "$tool_name")"
 	description="$(agents_description_for_tool "$tool_name")"
 
@@ -1524,11 +1557,11 @@ agents_entry_for_tool() {
 	fi
 }
 
-build_new_agents_entries() {
+build_missing_agents_entries() {
 	local tool_name=""
 
 	for tool_name in "${TOOL_NAMES[@]}"; do
-		if [[ -z "${NEW_TOOL_COMMANDS[$tool_name]:-}" ]]; then
+		if ! agents_tool_is_verified "$tool_name"; then
 			continue
 		fi
 
@@ -1545,7 +1578,11 @@ build_managed_agents_replacements() {
 	local display_name=""
 	local description=""
 
-	for tool_name in rg rtk codegraph; do
+	for tool_name in "${TOOL_NAMES[@]}"; do
+		if ! agents_tool_is_verified "$tool_name"; then
+			continue
+		fi
+
 		display_name="$(agents_display_name_for_tool "$tool_name")"
 		description="$(agents_description_for_tool "$tool_name")"
 		printf '%s\t%s\t%s\n' "$tool_name" "$display_name" "$description"
@@ -1578,7 +1615,7 @@ update_agents_managed_block() {
 
 	additions_file="$(mktemp)"
 	replacements_file="$(mktemp)"
-	build_new_agents_entries > "$additions_file"
+	build_missing_agents_entries > "$additions_file"
 	build_managed_agents_replacements > "$replacements_file"
 	addition_count="$(wc -l < "$additions_file")"
 	replacement_count="$(wc -l < "$replacements_file")"
@@ -1651,7 +1688,11 @@ update_agents_managed_block() {
 								command_end = index(command_remainder, "`")
 								if (command_end > 0) {
 									command_name = substr(command_remainder, 1, command_end - 1)
-									print sprintf("- `%s`: `%s` - %s", display_names[tool_name], command_name, descriptions[tool_name])
+									if (descriptions[tool_name] != "") {
+										print sprintf("- `%s`: `%s` - %s", display_names[tool_name], command_name, descriptions[tool_name])
+									} else {
+										print sprintf("- `%s`: `%s`", display_names[tool_name], command_name)
+									}
 									next
 								}
 							}

@@ -326,11 +326,13 @@ test_no_empty_agents_file() {
 	source "$HELPER_PATH"
 
 	AGENTS_PATH="$MOCK_ROOT/missing/AGENTS.md"
+	TOOL_RESULTS=()
+	TOOL_RESULT_DETAILS=()
 	NEW_TOOL_COMMANDS=()
 	update_agents_managed_block
 
 	if [[ -e "$AGENTS_PATH" ]]; then
-		fail_test 'AGENTS.md was created without a newly installed tool'
+		fail_test 'AGENTS.md was created without a verified installed tool'
 	fi
 }
 
@@ -346,10 +348,17 @@ test_agents_block_is_additive_idempotent_and_migrates_descriptions() {
 	source "$HELPER_PATH"
 
 	AGENTS_PATH="$MOCK_AGENTS"
-	NEW_TOOL_COMMANDS[python]=python3
-	NEW_TOOL_COMMANDS[rg]=rg
-	NEW_TOOL_COMMANDS[rtk]=rtk
-	NEW_TOOL_COMMANDS[codegraph]=codegraph
+	TOOL_RESULTS=()
+	TOOL_RESULT_DETAILS=()
+	NEW_TOOL_COMMANDS=()
+	TOOL_RESULTS[python]=present
+	TOOL_RESULTS[rg]=present
+	TOOL_RESULTS[rtk]=present
+	TOOL_RESULTS[codegraph]=present
+	TOOL_RESULT_DETAILS[python]=python3
+	TOOL_RESULT_DETAILS[rg]=rg
+	TOOL_RESULT_DETAILS[rtk]=rtk
+	TOOL_RESULT_DETAILS[codegraph]=codegraph
 	update_agents_managed_block
 
 	assert_contains '# user content' "$AGENTS_PATH" 'preserve existing AGENTS.md content' || return 1
@@ -374,14 +383,16 @@ test_agents_block_is_additive_idempotent_and_migrates_descriptions() {
 	assert_line_count '1' "$expected_codegraph_entry" "$AGENTS_PATH" 'migrate the managed CodeGraph entry' || return 1
 	assert_contains '- `python`: `python3`' "$AGENTS_PATH" 'preserve existing managed command-only entry' || return 1
 
-	NEW_TOOL_COMMANDS=()
-	NEW_TOOL_COMMANDS[ruby]=ruby
+	TOOL_RESULTS[ruby]=present
+	TOOL_RESULT_DETAILS[ruby]=ruby
 	update_agents_managed_block
 	assert_contains '# keep this' "$AGENTS_PATH" 'preserve managed-block surrounding content' || return 1
 	assert_contains '- `ruby`: `ruby`' "$AGENTS_PATH" 'append new managed-block entry' || return 1
 	assert_contains '- `python`: `python3`' "$AGENTS_PATH" 'preserve existing managed-block entry' || return 1
 
 	printf '%s\n' '# incomplete' "$MANAGED_BLOCK_BEGIN" > "$AGENTS_PATH"
+	TOOL_RESULTS=()
+	TOOL_RESULT_DETAILS=()
 	NEW_TOOL_COMMANDS=()
 	NEW_TOOL_COMMANDS[rg]=rg
 	if update_agents_managed_block; then

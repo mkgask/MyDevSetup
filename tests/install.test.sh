@@ -316,7 +316,12 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot </dev/null > "$OUTPUT_LOG" 2>&1
 	)
 
-	cmp -s "$SOURCE_ROOT/templates/AGENTS.md" "$TARGET_ROOT/AGENTS.md" || fail_test 'default ask policy should update AGENTS.md without a TTY' || return 1
+	assert_contains '<!-- BEGIN MYDEVSETUP DEV TOOLS -->' "$TARGET_ROOT/AGENTS.md" 'default ask policy should update AGENTS.md without a TTY' || return 1
+	assert_contains '- `python`: `python3`' "$TARGET_ROOT/AGENTS.md" 'record existing Python installation in AGENTS.md' || return 1
+	assert_contains '- `ruby`: `ruby`' "$TARGET_ROOT/AGENTS.md" 'record existing Ruby installation in AGENTS.md' || return 1
+	assert_contains '- `ripgrep`: `rg` - Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.' "$TARGET_ROOT/AGENTS.md" 'record existing ripgrep installation in AGENTS.md' || return 1
+	assert_contains '- `rtk`: `rtk` - High-performance output-filtering/compression proxy for LLM context. Use rtk --help; useful subcommands include ls, tree, read, git, psql, pnpm, json, env, find, diff, log, grep, and npx.' "$TARGET_ROOT/AGENTS.md" 'record existing RTK installation in AGENTS.md' || return 1
+	assert_contains '- `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.' "$TARGET_ROOT/AGENTS.md" 'record existing CodeGraph installation in AGENTS.md' || return 1
 	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'default ask policy should update PRINCIPLES.md without a TTY' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
 	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'default ask policy should update first-setup.sh without a TTY' || return 1
@@ -357,7 +362,9 @@ test_overwrite_yes_updates_local_assets_and_forwards_policy() {
 		setsid --wait env HOME="$MOCK_HOME" PATH="$MOCK_BIN:/usr/bin:/bin" DODKIT_LOG="$DODKIT_LOG" bash "$SOURCE_ROOT/install.sh" copilot --overwrite yes </dev/null > "$OUTPUT_LOG" 2>&1
 	)
 
-	cmp -s "$SOURCE_ROOT/templates/AGENTS.md" "$TARGET_ROOT/AGENTS.md" || fail_test 'overwrite=yes should update AGENTS.md' || return 1
+	assert_contains '<!-- BEGIN MYDEVSETUP DEV TOOLS -->' "$TARGET_ROOT/AGENTS.md" 'overwrite=yes should update AGENTS.md' || return 1
+	assert_contains '- `python`: `python3`' "$TARGET_ROOT/AGENTS.md" 'overwrite=yes should record existing Python installation' || return 1
+	assert_contains '- `ruby`: `ruby`' "$TARGET_ROOT/AGENTS.md" 'overwrite=yes should record existing Ruby installation' || return 1
 	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'overwrite=yes should update PRINCIPLES.md' || return 1
 	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
 	assert_contains 'yes' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
