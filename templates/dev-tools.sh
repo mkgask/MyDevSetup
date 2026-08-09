@@ -5,12 +5,13 @@ set -euo pipefail
 # ---
 # Foundation State
 
-TOOL_NAMES=(python ruby rg rtk codegraph uv serena)
+TOOL_NAMES=(python ruby node rg rtk codegraph uv serena)
 PACKAGE_MANAGER_NAMES=(apt-get dnf yum pacman zypper apk nix proto mise asdf brew)
 
 declare -A TOOL_COMMANDS=(
 	[python]="python3"
 	[ruby]="ruby"
+	[node]="node"
 	[rg]="rg"
 	[rtk]="rtk"
 	[codegraph]="codegraph"
@@ -184,6 +185,9 @@ tool_command_candidates() {
 		python)
 			printf '%s\n' python3 python
 			;;
+		node)
+			printf '%s\n' node nodejs
+			;;
 		ruby|rg|rtk|codegraph|uv|serena)
 			printf '%s\n' "${TOOL_COMMANDS[$tool_name]}"
 			;;
@@ -329,6 +333,12 @@ system_package_for_tool() {
 		python:pacman)
 			printf '%s' python
 			;;
+		node:apt-get|node:dnf|node:yum|node:pacman|node:zypper|node:apk)
+			printf '%s' nodejs
+			;;
+		node:brew)
+			printf '%s' node
+			;;
 		ruby:*)
 			printf '%s' ruby
 			;;
@@ -346,7 +356,7 @@ system_route_available() {
 	local manager_name=""
 
 	case "$tool_name" in
-		python|ruby|rg)
+		python|ruby|node|rg)
 			manager_name="$(find_system_package_manager)" || return 1
 			system_package_for_tool "$tool_name" "$manager_name" >/dev/null
 			;;
@@ -373,6 +383,9 @@ nix_package_candidates() {
 	case "$1" in
 		python)
 			printf '%s\n' python3 python
+			;;
+		node)
+			printf '%s\n' nodejs
 			;;
 		rg)
 			printf '%s\n' ripgrep rg
@@ -491,6 +504,9 @@ proto_route_available() {
 
 mise_tool_candidates() {
 	case "$1" in
+		node)
+		printf '%s\n' node
+		;;
 		rg)
 		printf '%s\n' ripgrep rg
 		;;
@@ -523,6 +539,9 @@ mise_route_available() {
 
 asdf_plugin_candidates() {
 	case "$1" in
+		node)
+		printf '%s\n' nodejs
+		;;
 		rg)
 		printf '%s\n' ripgrep rg
 		;;
@@ -692,7 +711,7 @@ available_routes_for_tool() {
 
 default_route_for_tool() {
 	case "$1" in
-		python|ruby|rg)
+		python|ruby|node|rg)
 			printf '%s' system
 			;;
 		rtk|codegraph|uv)
@@ -1499,6 +1518,9 @@ agents_contains_tool() {
 	case "$tool_name" in
 		python)
 			pattern='(^|[^[:alnum:]_-])python(3)?([^[:alnum:]_-]|$)'
+			;;
+		node)
+			pattern='(^|[^[:alnum:]_-])node(js)?([^[:alnum:]_-]|$)'
 			;;
 		rg)
 			pattern='(^|[^[:alnum:]_-])(rg|ripgrep)([^[:alnum:]_-]|$)'

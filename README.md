@@ -43,6 +43,7 @@ bash .dev/dev-tools.sh init --agent cursor
 
 - Python (`python3`)
 - Ruby (`ruby`)
+- Node.js (`node`)
 - ripgrep (`rg`)
 - RTK (`rtk`)
 - CodeGraph (`codegraph`)

@@ -99,7 +99,7 @@ prepare_mock_environment() {
 install_failed_tool_stubs() {
 	local tool_name=""
 
-	for tool_name in python3 python ruby rg rtk codegraph; do
+	for tool_name in python3 python ruby node nodejs rg rtk codegraph; do
 		write_mock_command "$MOCK_BIN/$tool_name" 'exit 1'
 	done
 }
@@ -109,7 +109,7 @@ prepare_install_mocks() {
 		'if [[ "${1:-}" != "install" ]]; then exit 0; fi' \
 		'package_name="${@: -1}"' \
 		'tool_name="$package_name"' \
-		'case "$package_name" in python3) tool_name=python3 ;; ripgrep) tool_name=rg ;; esac' \
+		'case "$package_name" in python3) tool_name=python3 ;; nodejs) tool_name=node ;; ripgrep) tool_name=rg ;; esac' \
 		'printf "system %s\\n" "$*" >> "$MOCK_LOG"' \
 		'if [[ "$tool_name" == "$MOCK_FAIL_TOOL" ]]; then exit 1; fi' \
 		'printf "%s\\n" "#!/usr/bin/env bash" "exit 0" > "$MOCK_BIN/$tool_name"' \
@@ -321,6 +321,56 @@ test_manager_capability_probes() {
 	assert_not_contains 'plugin list all' "$MOCK_LOG" 'asdf probe does not query remote plugins' || return 1
 }
 
+test_node_route_mappings() {
+	local routes=""
+	local global_routes=""
+	local expected_system_command=""
+
+	prepare_mock_environment node-route-mappings
+	write_mock_command "$MOCK_BIN/apt-get" 'exit 0'
+	write_mock_command "$MOCK_BIN/sudo" 'exit 0'
+	write_mock_command "$MOCK_BIN/brew" 'exit 0'
+	write_mock_command "$MOCK_BIN/nix" \
+		'if [[ "${1:-}" == "profile" && "${2:-}" == "install" && "${3:-}" == "--help" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "eval" ]]; then [[ "$*" == *"nixpkgs#nodejs.name"* ]]; exit $?; fi' \
+		'exit 1'
+	write_mock_command "$MOCK_BIN/mise" \
+		'if [[ "${1:-}" != "registry" ]]; then exit 1; fi' \
+		'[[ "${2:-}" == "node" ]]'
+	write_mock_command "$MOCK_BIN/asdf" \
+		'if [[ "${1:-}" == "plugin" && "${2:-}" == "list" ]]; then printf "%s\n" nodejs; exit 0; fi' \
+		'exit 1'
+	source "$HELPER_PATH"
+
+	assert_equal $'node\nnodejs' "$(tool_command_candidates node)" 'Node command candidates' || return 1
+	assert_equal 'nodejs' "$(system_package_for_tool node apt-get)" 'system Node package mapping' || return 1
+	assert_equal 'nodejs' "$(system_package_for_tool node pacman)" 'pacman Node package mapping' || return 1
+	assert_equal 'node' "$(system_package_for_tool node brew)" 'Homebrew Node package mapping' || return 1
+	assert_equal 'nodejs' "$(nix_package_for_tool node)" 'Nix Node package mapping' || return 1
+	assert_equal 'node' "$(mise_tool_for_tool node)" 'mise Node identifier' || return 1
+	assert_equal 'nodejs' "$(asdf_plugin_for_tool node)" 'asdf Node plugin alias' || return 1
+	assert_equal 'system' "$(default_route_for_tool node)" 'Node default route' || return 1
+
+	routes="$(available_routes_for_tool node)"
+	assert_equal $'nix\nmise\nasdf\nbrew\nsystem\nskip' "$routes" 'Node route filtering' || return 1
+
+	GLOBAL_INSTALL=1
+	global_routes="$(available_routes_for_tool node)"
+	GLOBAL_INSTALL=0
+	assert_equal $'nix\nbrew\nsystem\nskip' "$global_routes" 'Node global route filtering' || return 1
+
+	if [[ "$EUID" -eq 0 ]]; then
+		expected_system_command='apt-get install -y nodejs'
+	else
+		expected_system_command='sudo apt-get install -y nodejs'
+	fi
+	assert_equal "$expected_system_command" "$(planned_install_command_for_route node system)" 'Node system planned command' || return 1
+	assert_equal 'nix profile install nixpkgs#nodejs' "$(planned_install_command_for_route node nix)" 'Node Nix planned command' || return 1
+	assert_equal 'mise install node@latest' "$(planned_install_command_for_route node mise)" 'Node mise planned command' || return 1
+	assert_equal 'asdf install nodejs latest' "$(planned_install_command_for_route node asdf)" 'Node asdf planned command' || return 1
+	assert_equal 'brew install node' "$(planned_install_command_for_route node brew)" 'Node Homebrew planned command' || return 1
+}
+
 test_no_empty_agents_file() {
 	prepare_mock_environment no-empty-agents
 	source "$HELPER_PATH"
@@ -352,10 +402,12 @@ test_agents_block_is_additive_idempotent_and_migrates_descriptions() {
 	TOOL_RESULT_DETAILS=()
 	NEW_TOOL_COMMANDS=()
 	TOOL_RESULTS[python]=present
+	TOOL_RESULTS[node]=present
 	TOOL_RESULTS[rg]=present
 	TOOL_RESULTS[rtk]=present
 	TOOL_RESULTS[codegraph]=present
 	TOOL_RESULT_DETAILS[python]=python3
+	TOOL_RESULT_DETAILS[node]=nodejs
 	TOOL_RESULT_DETAILS[rg]=rg
 	TOOL_RESULT_DETAILS[rtk]=rtk
 	TOOL_RESULT_DETAILS[codegraph]=codegraph
@@ -364,6 +416,7 @@ test_agents_block_is_additive_idempotent_and_migrates_descriptions() {
 	assert_contains '# user content' "$AGENTS_PATH" 'preserve existing AGENTS.md content' || return 1
 	assert_contains "$MANAGED_BLOCK_BEGIN" "$AGENTS_PATH" 'create managed block marker' || return 1
 	assert_contains '- `python`: `python3`' "$AGENTS_PATH" 'record python command' || return 1
+	assert_contains '- `node`: `nodejs`' "$AGENTS_PATH" 'record Node fallback command' || return 1
 	assert_contains "$expected_ripgrep_entry" "$AGENTS_PATH" 'record ripgrep description' || return 1
 	assert_contains "$expected_rtk_entry" "$AGENTS_PATH" 'record rtk description' || return 1
 	assert_contains "$expected_codegraph_entry" "$AGENTS_PATH" 'record CodeGraph description' || return 1
@@ -411,12 +464,13 @@ test_interactive_install_and_failure_continuation() {
 	install_failed_tool_stubs
 	prepare_install_mocks
 
-	output="$(run_helper_with_inputs $'1\nsystem\n1\nofficial\n1\n1\n1\n')"
+	output="$(run_helper_with_inputs $'1\nsystem\n1\n1\nofficial\n1\n1\n1\n')"
 	prompt_count="$(grep -o 'Choose an installation method' <<< "$output" | wc -l)"
-	assert_equal '7' "$prompt_count" 'prompt exactly once per missing tool' || return 1
+	assert_equal '8' "$prompt_count" 'prompt exactly once per missing tool' || return 1
 	assert_contains 'Development-tool summary:' "$MOCK_ROOT/output.log.stdout" 'print final summary' || return 1
 	assert_contains '- `python`: `python3`' "$MOCK_AGENTS" 'record installed python' || return 1
 	assert_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'record installed ruby' || return 1
+	assert_contains '- `node`: `node`' "$MOCK_AGENTS" 'record installed Node' || return 1
 	assert_contains '- `ripgrep`: `rg` - Fast Rust line-oriented recursive regex search; respects .gitignore and skips hidden/binary files by default. Use rg -uuu to disable filtering.' "$MOCK_AGENTS" 'record installed ripgrep description' || return 1
 	assert_contains '- `rtk`: `rtk` - High-performance output-filtering/compression proxy for LLM context. Use rtk --help; useful subcommands include ls, tree, read, git, psql, pnpm, json, env, find, diff, log, grep, and npx.' "$MOCK_AGENTS" 'record installed rtk description' || return 1
 	assert_contains '- `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.' "$MOCK_AGENTS" 'record installed CodeGraph description' || return 1
@@ -431,7 +485,7 @@ test_interactive_install_and_failure_continuation() {
 	DEV_TOOLS_DEBUG=1
 	export DEV_TOOLS_DEBUG
 
-	if output="$(run_helper_with_inputs $'system\nsystem\nsystem\nofficial\nofficial\nofficial\nuv-tool\n')"; then
+	if output="$(run_helper_with_inputs $'system\nsystem\nsystem\nsystem\nofficial\nofficial\nofficial\nuv-tool\n')"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -443,6 +497,7 @@ test_interactive_install_and_failure_continuation() {
 	assert_not_contains '[DEBUG] Running:' "$MOCK_ROOT/output.log.stdout" 'ignore legacy debug environment variable' || return 1
 	assert_not_contains '[🔵DEBUG] Running:' "$MOCK_ROOT/output.log.stdout" 'do not emit trace without debug flag' || return 1
 	assert_contains 'rg         installed' "$MOCK_ROOT/output.log.stdout" 'continue after failed tool' || return 1
+	assert_contains 'node       installed' "$MOCK_ROOT/output.log.stdout" 'continue with Node after failed tool' || return 1
 	assert_not_contains '- `ruby`: `ruby`' "$MOCK_AGENTS" 'do not record failed tool' || return 1
 	assert_contains 'official rtk' "$MOCK_LOG" 'run official rtk installer' || return 1
 	assert_contains 'official codegraph' "$MOCK_LOG" 'run official codegraph installer' || return 1
@@ -469,7 +524,7 @@ test_uv_dependency_failure() {
 	MOCK_FAIL_TOOL=uv
 	export MOCK_FAIL_TOOL
 
-	if output="$(run_helper_with_inputs $'skip\nskip\nskip\nskip\nskip\nofficial\n')"; then
+	if output="$(run_helper_with_inputs $'skip\nskip\nskip\nskip\nskip\nskip\nofficial\nskip\n')"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -497,7 +552,7 @@ test_debug_flag_and_verification_failure() {
 		'printf "%s\\n" "#!/usr/bin/env bash" "exit 7" > "$MOCK_BIN/$package_name"' \
 		'chmod +x "$MOCK_BIN/$package_name"'
 
-	if output="$(run_helper_with_inputs $'skip\nsystem\nskip\nskip\nskip\nskip\nskip\n' --debug)"; then
+	if output="$(run_helper_with_inputs $'skip\nsystem\nskip\nskip\nskip\nskip\nskip\nskip\n' --debug)"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -650,6 +705,7 @@ test_dry_run_mode() {
 	assert_equal '0' "$helper_status" 'non-interactive dry-run succeeds' || return 1
 	assert_contains 'Development-tool dry-run:' "$MOCK_ROOT/output.log" 'print dry-run title' || return 1
 	grep -Eq '^  python[[:space:]]+planned[[:space:]]+system: .*apt-get install -y python3' "$MOCK_ROOT/output.log" || fail_test 'preview the default system route for python' || return 1
+	grep -Eq '^  node[[:space:]]+planned[[:space:]]+system: .*apt-get install -y nodejs' "$MOCK_ROOT/output.log" || fail_test 'preview the default system route for Node' || return 1
 	grep -Eq '^  rtk[[:space:]]+planned[[:space:]]+official: .*rtk' "$MOCK_ROOT/output.log" || fail_test 'preview the default official route for RTK' || return 1
 	grep -Eq '^  uv[[:space:]]+planned[[:space:]]+official: .*uv/install.sh' "$MOCK_ROOT/output.log" || fail_test 'preview the default official route for uv' || return 1
 	grep -Eq '^  serena[[:space:]]+skipped[[:space:]]+' "$MOCK_ROOT/output.log" || fail_test 'skip Serena without an available uv route' || return 1
@@ -667,7 +723,7 @@ test_dry_run_mode() {
 		'if [[ "${1:-}" == "eval" ]]; then exit 0; fi' \
 		'exit 1'
 
-	if output="$(run_helper_with_inputs $'brew\nsystem\nsystem\nofficial\nskip\nofficial\n' install --dry-run)"; then
+	if output="$(run_helper_with_inputs $'brew\nsystem\nsystem\nsystem\nofficial\nskip\nofficial\nskip\n' install --dry-run)"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -688,6 +744,7 @@ test_dry_run_mode() {
 
 test_dry_run_planned_commands() {
 	local expected_system_command=""
+	local expected_node_system_command=""
 	local official_command=""
 
 	prepare_mock_environment dry-run-planned-commands
@@ -697,24 +754,31 @@ test_dry_run_planned_commands() {
 	write_mock_command "$MOCK_BIN/nix" 'exit 0'
 	write_mock_command "$MOCK_BIN/proto" 'exit 0'
 	write_mock_command "$MOCK_BIN/mise" \
-		'if [[ "${1:-}" == "registry" ]]; then exit 0; fi' \
+		'if [[ "${1:-}" == "registry" ]]; then [[ "${2:-}" == "python" || "${2:-}" == "node" || "${2:-}" == "ripgrep" ]]; exit $?; fi' \
 		'exit 1'
 	write_mock_command "$MOCK_BIN/asdf" \
-		'if [[ "${1:-}" == "plugin" && "${2:-}" == "list" ]]; then printf "%s\n" ripgrep; exit 0; fi' \
+		'if [[ "${1:-}" == "plugin" && "${2:-}" == "list" ]]; then printf "%s\n" ripgrep nodejs; exit 0; fi' \
 		'exit 1'
 	source "$HELPER_PATH"
 
 	if [[ "$EUID" -eq 0 ]]; then
 		expected_system_command='apt-get install -y python3'
+		expected_node_system_command='apt-get install -y nodejs'
 	else
 		expected_system_command='sudo apt-get install -y python3'
+		expected_node_system_command='sudo apt-get install -y nodejs'
 	fi
 	assert_equal "$expected_system_command" "$(planned_install_command_for_route python system)" 'preview system command' || return 1
+	assert_equal "$expected_node_system_command" "$(planned_install_command_for_route node system)" 'preview Node system command' || return 1
 	assert_equal 'nix profile install nixpkgs#python3' "$(planned_install_command_for_route python nix)" 'preview nix command' || return 1
+	assert_equal 'nix profile install nixpkgs#nodejs' "$(planned_install_command_for_route node nix)" 'preview Node nix command' || return 1
 	assert_equal 'proto install python latest --no-build --yes' "$(planned_install_command_for_route python proto)" 'preview proto prebuilt command' || return 1
 	assert_equal 'mise install python@latest' "$(planned_install_command_for_route python mise)" 'preview mise command' || return 1
+	assert_equal 'mise install node@latest' "$(planned_install_command_for_route node mise)" 'preview Node mise command' || return 1
 	assert_equal 'asdf install ripgrep latest' "$(planned_install_command_for_route rg asdf)" 'preview asdf alias command' || return 1
+	assert_equal 'asdf install nodejs latest' "$(planned_install_command_for_route node asdf)" 'preview Node asdf alias command' || return 1
 	assert_equal 'brew install python' "$(planned_install_command_for_route python brew)" 'preview brew command' || return 1
+	assert_equal 'brew install node' "$(planned_install_command_for_route node brew)" 'preview Node brew command' || return 1
 	official_command="$(planned_install_command_for_route rtk official)"
 	assert_contains 'rtk-ai/rtk' <(printf '%s\n' "$official_command") 'preview official installer URL' || return 1
 	assert_equal 'uv tool install -p 3.13 serena-agent' "$(planned_install_command_for_route serena uv-tool)" 'preview uv-tool command' || return 1
@@ -778,6 +842,9 @@ test_status_mode() {
 	write_mock_command "$MOCK_BIN/ruby" \
 		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "ruby 3.4.1"; exit 0; fi' \
 		'exit 1'
+	write_mock_command "$MOCK_BIN/nodejs" \
+		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "v22.14.0"; exit 0; fi' \
+		'exit 1'
 	write_mock_command "$MOCK_BIN/uv" \
 		'if [[ "${1:-}" == "--version" ]]; then printf "%s\n" "uv 0.8.0"; exit 0; fi' \
 		'exit 1'
@@ -806,6 +873,7 @@ test_status_mode() {
 	fi
 	assert_contains "python     present   3.13.5 $MOCK_BIN/python3" "$MOCK_ROOT/output.log" 'status reports python version and path' || return 1
 	assert_contains "ruby       present   3.4.1 $MOCK_BIN/ruby" "$MOCK_ROOT/output.log" 'status reports ruby version and path' || return 1
+	assert_contains "node       present   22.14.0 $MOCK_BIN/nodejs" "$MOCK_ROOT/output.log" 'status reports Node fallback version and path' || return 1
 	assert_contains "uv         present   0.8.0 $MOCK_BIN/uv" "$MOCK_ROOT/output.log" 'status reports uv version and path' || return 1
 	uv_status_count="$(grep -Ec '^  uv[[:space:]]+' "$MOCK_ROOT/output.log")"
 	assert_equal '1' "$uv_status_count" 'status reports uv only in the tool section' || return 1
@@ -834,7 +902,7 @@ test_status_mode() {
 	rm -f "$agents_snapshot"
 
 	prepare_mock_environment status-available
-	for command_name in python3 ruby rg rtk codegraph uv serena; do
+	for command_name in python3 ruby node rg rtk codegraph uv serena; do
 		write_mock_command "$MOCK_BIN/$command_name" \
 			'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
 			'exit 1'
@@ -853,6 +921,7 @@ test_status_mode() {
 	assert_contains 'apt-get    unavailable' "$MOCK_ROOT/output.log" 'manager absence is informational' || return 1
 	assert_not_contains 'python     unavailable' "$MOCK_ROOT/output.log" 'python is available' || return 1
 	assert_not_contains 'ruby       unavailable' "$MOCK_ROOT/output.log" 'ruby is available' || return 1
+	assert_not_contains 'node       unavailable' "$MOCK_ROOT/output.log" 'Node is available' || return 1
 	assert_not_contains 'rg         unavailable' "$MOCK_ROOT/output.log" 'rg is available' || return 1
 	assert_not_contains 'rtk        unavailable' "$MOCK_ROOT/output.log" 'rtk is available' || return 1
 	assert_not_contains 'codegraph  unavailable' "$MOCK_ROOT/output.log" 'codegraph is available' || return 1
@@ -962,9 +1031,10 @@ test_default_route_and_skip_selection() {
 	install_failed_tool_stubs
 	prepare_install_mocks
 
-	output="$(run_helper_with_inputs $'\n\nskip\n\nskip\nskip\n')"
+	output="$(run_helper_with_inputs $'\n\n\nskip\n\nskip\nskip\nskip\n')"
 	assert_contains 'python     installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects python default' || return 1
 	assert_contains 'ruby       installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects ruby default' || return 1
+	assert_contains 'node       installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects Node default' || return 1
 	assert_contains 'rg         skipped   selected skip' "$MOCK_ROOT/output.log.stdout" 'explicit skip uses the common result detail' || return 1
 	assert_contains 'rtk        installed' "$MOCK_ROOT/output.log.stdout" 'blank input selects rtk default' || return 1
 	assert_contains 'codegraph  skipped   selected skip' "$MOCK_ROOT/output.log.stdout" 'explicit skip detail is consistent across tools' || return 1
@@ -1041,7 +1111,7 @@ test_post_install_proto_activation() {
 	prepare_install_mocks
 	write_proto_post_install_mocks
 
-	if output="$(run_helper_with_inputs $'skip\nproto\nskip\nskip\nskip\nskip\nskip\n')"; then
+	if output="$(run_helper_with_inputs $'skip\nproto\nskip\nskip\nskip\nskip\nskip\nskip\n')"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -1076,7 +1146,7 @@ test_post_install_mise_activation() {
 	prepare_install_mocks
 	write_mise_post_install_mocks
 
-	if output="$(run_helper_with_inputs $'skip\nskip\nmise\nskip\nskip\nskip\nskip\n')"; then
+	if output="$(run_helper_with_inputs $'skip\nskip\nskip\nmise\nskip\nskip\nskip\nskip\n')"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -1105,7 +1175,7 @@ test_post_install_setup_failure() {
 	MOCK_FAIL_POST_SETUP=proto-pin
 	export MOCK_FAIL_POST_SETUP
 
-	if output="$(run_helper_with_inputs $'skip\nproto\nskip\nskip\nskip\nskip\nskip\n')"; then
+	if output="$(run_helper_with_inputs $'skip\nproto\nskip\nskip\nskip\nskip\nskip\nskip\n')"; then
 		helper_status=0
 	else
 		helper_status="$?"
@@ -1196,6 +1266,7 @@ export PATH
 run_test 'route filtering' test_route_filtering
 run_test 'explicit brew route' test_brew_route_is_explicit
 run_test 'manager capability probes' test_manager_capability_probes
+run_test 'Node route mappings' test_node_route_mappings
 run_test 'no empty AGENTS.md' test_no_empty_agents_file
 run_test 'AGENTS.md managed block' test_agents_block_is_additive_idempotent_and_migrates_descriptions
 run_test 'interactive install and failure continuation' test_interactive_install_and_failure_continuation

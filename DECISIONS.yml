@@ -63,6 +63,7 @@ decisions:
             利用可能な package manager を導入経路として考慮する旨だけを最小限記載する。
             ローカル checkout、開発・検証手順、内部実装の説明は記載しない。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-009-node-tool-installation.md"
           sub_decisions: []
 
     - id: installer-004-supported-targets
@@ -215,17 +216,18 @@ decisions:
         既存の AGENTS.md 本文を保護したまま導入成功した新規ツールを処理の最後に記録する。
         既定の install モードはCLI本体の導入だけとし、AI連携設定やプロジェクト索引作成を自動化しない。
         明示的な init モードでは、導入済みで現在プロジェクトの利用に初期設定が必要なツールについて、公式の初期設定を実行できる。
-        対象には python、ruby、rg、rtk、codegraph、uv、Serena を含める。
+        対象には python、ruby、node、rg、rtk、codegraph、uv、Serena を含める。
       status: "✅️Implementation Approved"
-      link: "records/dev-tools-001-optional-tool-installation.md"
+      link: "records/dev-tools-009-node-tool-installation.md"
       sub_decisions:
         - id: installer-011-1-tool-order-and-prompt
           decision: >
-            不足時の確認対象は python、ruby、rg、rtk、codegraph、uv、Serena の順とし、存在するツールは質問せず、
+            不足時の確認対象は python、ruby、node、rg、rtk、codegraph、uv、Serena の順とし、存在するツールは質問せず、
             未導入のツールだけを各一回ずつの導入方法選択で確認する。選択肢はツールごとの対応表から生成し、
-            codegraph、uv、Serena の実行コマンド名はそれぞれ codegraph、uv、serena とする。空入力時の既定導入方法はツールごとに固定する。
+            codegraph、node、uv、Serena の実行コマンド名はそれぞれ codegraph、node、uv、serena とする。空入力時の既定導入方法はツールごとに固定する。
             uv は Serena より先に処理し、Serena の導入依存を同一実行内で満たせる順序を保つ。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-009-node-tool-installation.md"
           sub_decisions: []
 
         - id: installer-011-2-installation-backends
@@ -235,12 +237,12 @@ decisions:
             asdf は既に登録済みのplugin inventoryで対象pluginを確認できた場合だけ候補にする。probeの失敗・未知識別子・未登録pluginは候補から除外し、
             probeは導入、plugin登録、remote一覧の同期、設定変更、永続PATH変更を行わない。protoとsystemは安全な共通probeを採用するまで現行の明示的な識別子mappingを使い、
             system も対応する既存のシステムパッケージマネージャーが検出できた場合だけ候補にする。brewはsystem routeから分離し、既存のbrew commandと
-            Python・Ruby・rgの明示的なpackage mappingで候補にする。brewのformula検索やtap追加を行わず、マネージャー本体や不足プラグインは自動導入しない。
+            Python・Ruby・Node.js・rgの明示的なpackage mappingで候補にする。brewのformula検索やtap追加を行わず、マネージャー本体や不足プラグインは自動導入しない。
             uv は公式standalone installerを使う official route とし、Serena は uv が利用可能な場合だけ `uv tool install` を使う uv-tool route とする。
             --global では全プロジェクトから利用可能な導入先を持つ system、nix、brew、official、uv-tool 経路だけを候補にし、該当経路がなければ skip とする。
             uv が未導入または導入失敗した場合、Serena の uv-tool route は候補にせず、Serenaを暗黙に別経路で導入しない。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-001-optional-tool-installation.md"
+          link: "records/dev-tools-009-node-tool-installation.md"
           sub_decisions:
             - id: installer-011-2-1-proto-prebuilt
               decision: >
@@ -268,14 +270,24 @@ decisions:
               status: "✅️Implementation Approved"
               link: "records/dev-tools-004-proto-source-dependencies.md"
               sub_decisions: []
+            - id: installer-011-2-4-node-installation-mapping
+              decision: >
+                Node.js は system 経路では apt-get、dnf、yum、pacman、zypper、apk の `nodejs` package、brew 経路では `node` formula を使う。
+                nix は read-only capability probe で `nodejs` attribute を確認し、mise は `node` registry identifier を確認する。
+                asdf は既に登録済みの `nodejs` plugin がある場合だけ候補にする。Node.js に proto または official route、npm packageの自動導入を追加せず、
+                `--global` の候補制限と各routeの既存scope契約を維持する。
+              status: "✅️Implementation Approved"
+              link: "records/dev-tools-009-node-tool-installation.md"
+              sub_decisions: []
 
         - id: installer-011-3-command-and-version-contract
           decision: >
-            python3 は Python の導入済みコマンドとして受け入れ、AGENTS.md には実際に検証できたコマンド名を記載する。
+            python3 は Python の導入済みコマンドとして受け入れ、Node.js は `node` を標準コマンドとして `nodejs` をfallback候補に含め、AGENTS.md には実際に検証できたコマンド名を記載する。
             選択された導入経路は各経路の最新安定版を既定とし、公式インストーラーが対応するツールでは official も選択肢にする。
             uv は `uv`、Serena は `serena-agent` package が提供する `serena` を導入後検証し、公式の環境変数等によるバージョン固定を妨げない。
             導入後は実際に検証できた実行コマンドを記録する。
           status: "✅️Implementation Approved"
+          link: "records/dev-tools-009-node-tool-installation.md"
           sub_decisions: []
 
         - id: installer-011-4-third-party-cli-scope
@@ -335,11 +347,11 @@ decisions:
             identifier mappingはmanager側の名前へ変換するためのalias normalizationだけを担い、mapping自体で未確認の対応可否を作らない。
             未導入のマネージャー、対象ツールに未対応のマネージャー、不足プラグインを必要とする経路は表示しない。asdfはremote plugin一覧だけでは候補にしない。
             routeの候補順は nix、proto、mise、asdf、brew、system、official、uv-tool、skip とする。候補順は表示と数値選択の順序を定めるが、空入力時のツール別既定導入方法は変更しない。
-            system は Python・Ruby・rg の既存標準経路を既定とし、brewは独立routeとして Python・Ruby・rgだけを既存の明示的なmappingで扱う。rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
+            system は Python・Ruby・Node.js・rg の既存標準経路を既定とし、brewは独立routeとして Python・Ruby・Node.js・rgだけを既存の明示的なmappingで扱う。rtk・codegraph・uv は official を既定とする。Serena は uv-tool を既定とし、利用可能な別経路を同じ1回の選択で選べる。
             Serena の uv-tool は uv の実行可能性を検出できる場合だけ表示する。
             選択後にマネージャーやプラグインの導入確認を追加せず、利用可能な導入方法がない場合は skip とする。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-001-optional-tool-installation.md"
+          link: "records/dev-tools-009-node-tool-installation.md"
           sub_decisions: []
 
         - id: installer-011-9-helper-destination

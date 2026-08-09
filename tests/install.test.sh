@@ -186,7 +186,7 @@ prepare_fixture() {
 		'if [[ "$*" != *mkgask/dodkit* ]]; then exit 1; fi' \
 		'cat "$FIXTURE_ROOT/dodkit.sh"'
 
-	for tool_name in python3 ruby rg rtk codegraph; do
+	for tool_name in python3 ruby node rg rtk codegraph uv serena; do
 		write_mock_command "$MOCK_BIN/$tool_name" \
 			'if [[ "${1:-}" == "--version" ]]; then exit 0; fi' \
 			'exit 0'
