@@ -538,6 +538,13 @@ test_mode_parsing_and_logging() {
 	assert_equal '1' "$GLOBAL_INSTALL" 'global flag state' || return 1
 	assert_equal '0' "$DEBUG_ENABLED" 'debug flag resets between parses' || return 1
 
+	if ! parse_args install --agent cursor; then
+		fail_test 'agent flag was rejected for install mode compatibility'
+		return 1
+	fi
+	assert_equal 'install' "$DEV_TOOLS_MODE" 'agent compatibility keeps install mode' || return 1
+	assert_equal 'cursor' "$DEV_TOOLS_AGENT" 'install mode accepts the selected agent target' || return 1
+
 	if ! parse_args init --agent cursor --debug; then
 		fail_test 'agent and debug flags were rejected for init mode'
 		return 1
@@ -606,6 +613,7 @@ test_mode_parsing_and_logging() {
 	assert_equal '[✅️SUCCESS] success' "$success_output" 'success log contract' || return 1
 	print_usage > "$usage_output_file"
 	assert_contains 'dev-tools.sh [install|init|status] [--agent copilot|cursor] [--global] [--debug] [--dry-run]' "$usage_output_file" 'document agent, status, debug, and dry-run flags' || return 1
+	assert_contains 'The --agent option selects the agent-specific target for init mode. It is accepted in install mode for install.sh compatibility but does not affect installation; status ignores it.' "$usage_output_file" 'document agent option scope' || return 1
 	assert_not_contains 'DEV_TOOLS_DEBUG' "$usage_output_file" 'remove debug environment variable documentation' || return 1
 }
 

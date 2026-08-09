@@ -56,6 +56,7 @@ Usage:
 
 Description:
 	Install missing development CLI tools, initialize installed tools for the current project, or display their current status.
+	The --agent option selects the agent-specific target for init mode. It is accepted in install mode for install.sh compatibility but does not affect installation; status ignores it.
 	The --global option is available only for install mode.
 	The --debug option prints external command traces for this run.
 	The --dry-run option previews install routes and commands without installing anything.
