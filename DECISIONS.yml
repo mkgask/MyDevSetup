@@ -504,26 +504,124 @@ decisions:
   first-setup:
     - id: installer-011-22-first-setup-dependencies
       decision: >
-        templates/first-setup.sh は Linux/WSL の apt-get 環境で、開発ツールの導入・ビルド・実行準備に必要な
-        `patch`、`libdb-dev`、`build-essential`、`libyaml-dev`、`libssl-dev`、`libreadline6-dev`、`libffi-dev`、
-        `autoconf`、`libgdbm-dev`、`zlib1g-dev`、`rustc`、`libncurses5-dev`、`libgdbm6`、`libgmp-dev`、
-        `curl`、`git`、`gh`、`unzip`、`gzip`、`xz-utils` を明示的な依存パッケージ集合として管理し、
-        将来ほかの開発ツールに必要なパッケージもこの集合へ追加する。導入は `apt-get update` の後に
-        `apt-get install -y` で行う。実行ユーザーがrootでない場合だけ apt-get に sudo を付け、
-        開発ツール自体、shell起動ファイル、PATH、manager設定は変更しない。usage/info/success では個別ツール名を表示しない。
-        apt-get が利用できない、または非root環境でsudoが利用できない場合は明示的なエラーで終了し、他のpackage managerへフォールバックしない。
-        first-setup.sh は templates/dev-tools.sh の隣に置く手動実行用テンプレートとし、対応するfocused testは tests/first-setup.test.sh に置く。
-        install.sh での配布先と配布時の扱いは installer-011-23-first-setup-deployment に定め、自動実行はしない。
-        first-setup.sh の log_info、log_error、log_success は install.sh と templates/dev-tools.sh のラベル、絵文字、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けに従う。
+        templates/first-setup.sh は Linux/WSL の apt-get 環境で、OSセットアップ後に手動実行する初期準備用テンプレートとし、
+        開発ツールと初期セットアップ機能の依存パッケージ集合を管理する。
       status: "✅️Implementation Approved"
-      link: "records/first-setup-002-installer-deployment.md"
-      sub_decisions: []
+      link: "records/first-setup-003-hackgen-font-installation.md"
+      sub_decisions:
+        - id: installer-011-22-1-dependency-package-set
+          decision: >
+            first-setup.sh のAPT依存パッケージ集合は `patch`、`bison`、`libdb-dev`、`build-essential`、`libyaml-dev`、
+            `libssl-dev`、`libreadline6-dev`、`libffi-dev`、`autoconf`、`libgdbm-dev`、`zlib1g-dev`、`rustc`、
+            `libncurses5-dev`、`libgdbm6`、`libgmp-dev`、`fontconfig`、`curl`、`git`、`gh`、`jq`、`unzip`、
+            `gzip`、`xz-utils`を明示的に管理し、将来ほかの開発ツールや初期セットアップ機能に必要なパッケージもこの集合へ追加する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-2-apt-installation-contract
+          decision: >
+            first-setup.sh は `apt-get update` の後に `apt-get install -y` で依存パッケージを導入する。
+            実行ユーザーがrootでない場合だけapt-getにsudoを付ける。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-3-first-setup-lifecycle
+          decision: >
+            first-setup.sh はOSセットアップ後、dev-tools.shを実行する前に一度だけ手動実行する前提とする。
+            誤って再実行されても実行自体は拒否せず、APT依存の再実行はinstaller-011-22-2-apt-installation-contractに従い、機能ごとの再実行時副作用は各機能の既存判定で抑止する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-4-output-contract
+          decision: >
+            first-setup.sh のusage/info/successでは個別ツール名を表示しない。
+            log_info、log_error、log_successはinstall.shとtemplates/dev-tools.shのラベル、絵文字、TTY・NO_COLORによる色制御、標準出力・標準エラーの振り分けに従う。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-5-supported-environment
+          decision: >
+            first-setup.shはLinux/WSLのapt-get環境だけを対象とする。apt-getが利用できない、または非root環境でsudoが利用できない場合は明示的なエラーで終了し、
+            他のpackage managerへフォールバックしない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-6-side-effect-boundary
+          decision: first-setup.shは開発ツール自体、shell起動ファイル、PATH、manager設定を変更しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-7-focused-test-boundary
+          decision: first-setup.shに対応するfocused testはtests/first-setup.test.shに置く。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
 
     - id: installer-011-23-first-setup-deployment
       decision: >
-        install.sh は templates/first-setup.sh を配布アセットとして扱い、templates/dev-tools.sh と同じ選択済み配置ディレクトリへ first-setup.sh をコピーする。
-        既定の配置先は対象プロジェクトの .dev/first-setup.sh とし、既存の .dev/ ディレクトリで利用者が別の配置先を選んだ場合も同じディレクトリへ配置する。
-        first-setup.sh は配布後に自動実行せず、手動実行用アセットとして残す。配布アセット定義は既存の source path / destination path / asset name の3要素リストとループを利用する。
+        install.sh は templates/first-setup.sh をdev-tools.shのcompanionとなる手動実行用配布アセットとして扱う。
       status: "✅️Implementation Approved"
       link: "records/first-setup-002-installer-deployment.md"
-      sub_decisions: []
+      sub_decisions:
+        - id: installer-011-23-1-helper-destination
+          decision: >
+            first-setup.shはtemplates/dev-tools.shと同じ選択済み配置ディレクトリへコピーし、既定の配置先は対象プロジェクトの`.dev/first-setup.sh`とする。
+            既存の`.dev/`で利用者が別の配置先を選んだ場合も、その同じディレクトリへ配置する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-23-2-manual-execution-boundary
+          decision: first-setup.shはinstall.shによる配布後に自動実行せず、手動実行用アセットとして残す。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-23-3-deployment-asset-loop
+          decision: 配布アセット定義は既存のsource path / destination path / asset nameの3要素リストとループを利用する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+
+    - id: installer-011-25-hackgen-font-installation
+      decision: >
+        templates/first-setup.sh はAPT依存導入後にHackGen Nerd Fontsの指定フォントをユーザー単位で導入し、VS Codeのフォント設定は変更しない。
+      status: "✅️Implementation Approved"
+      link: "records/first-setup-003-hackgen-font-installation.md"
+      sub_decisions:
+        - id: installer-011-25-1-first-setup-integration
+          decision: >
+            HackGen導入はfirst-setup.shの引数なし実行に含め、APT依存導入後に行う。HackGen専用の明示モードは追加しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-2-user-font-scope
+          decision: >
+            フォント配置先は `$XDG_DATA_HOME/fonts/HackGen` とし、XDG_DATA_HOMEが未設定の場合は `$HOME/.local/share/fonts/HackGen` とする。
+            フォントコピーはsudoを使わず、`/usr/share/fonts`等へのシステム全体インストールは行わない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-3-installed-pair-idempotency
+          decision: >
+            `HackGenConsoleNF-Regular.ttf` と `HackGenConsoleNF-Bold.ttf` の両方が対象ディレクトリに通常ファイルとして存在する場合は導入済みとみなし、
+            GitHub API問い合わせ、ZIPダウンロード、展開、コピー、`fc-cache`をすべて行わず、既存ファイルを更新しない。
+            片方でも欠ける場合だけ新規導入処理を開始する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-4-latest-asset-selection
+          decision: >
+            片方でもフォントが欠ける場合は、HTTPSの`curl`で`https://api.github.com/repos/yuru7/HackGen/releases/latest`を取得し、
+            `jq`で名前が`HackGen_NF_*.zip`に一致するrelease assetを一つだけ選択してダウンロードする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-5-font-archive-installation
+          decision: >
+            ZIPから`HackGenConsoleNF-Regular.ttf`と`HackGenConsoleNF-Bold.ttf`だけを抽出し、一時配置領域で2ファイルが揃ったことを確認する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-6-staged-font-copy
+          decision: >
+            アーカイブ内の2ファイルが検証済みになってから配置先へ0644で導入し、片方欠落時も既存の片方を先に削除しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-6-font-installation-failure-and-cache
+          decision: >
+            asset選択、ダウンロード、展開、配置のいずれかが失敗した場合は明示的な非0終了とする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-8-cache-refresh
+          decision: 新規導入が完了した場合だけ対象ディレクトリへ`fc-cache`を実行し、`fc-cache`が失敗した場合は明示的な非0終了とする。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-25-7-font-installation-non-goals
+          decision: >
+            既存ペアのリリースタグ比較、旧版削除、無引数再実行時の自動アップデート、Windows側フォント登録、VS Code設定変更は行わない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
