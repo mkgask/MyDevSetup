@@ -27,8 +27,8 @@ Its job is to perform the pre-promotion audit that confirms the proposed directi
    Confirm that the candidate direction still serves the original objective and requested scope.
 5. Check contract fit.
    Test the candidate direction against active invariants, non-goals, acceptance criteria, and failure criteria.
-6. Check for hidden bindings.
-   Identify any new independently active rule that would need to be promoted as a new decision or sub-decision instead of staying implicit.
+6. Check for hidden bindings and document ownership.
+   Identify any new independently active rule that would need to be promoted as a new decision or sub-decision instead of staying implicit. Confirm that each project-specific binding constraint has one canonical owner in the applicable `DECISIONS.yml`, and treat duplicated project-specific decision text in `AGENTS.md`, `PRINCIPLES.md`, `DOD.md`, `README.md`, or skill files as a validation failure unless the other document contains distinct operational or explanatory content required by its own role.
 7. Run the default pre-promotion audit.
    Treat audit work here as part of validation: inspect likely drift, missing constraints, overloaded decisions, premature scope growth, and omission risk caused by narrowing too soon.
 8. Decide pass or return.
@@ -45,4 +45,5 @@ Its job is to perform the pre-promotion audit that confirms the proposed directi
 - The candidate direction is either explicitly validated or explicitly rejected.
 - The record shows that broad-scan coverage and narrowed focus were both checked.
 - Promotion targets are named precisely when validation passes.
+- Document ownership and unjustified decision duplication are checked before promotion.
 - Drift, hidden constraints, and contract gaps are surfaced before `DECISIONS.yml` is edited.

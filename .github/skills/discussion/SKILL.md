@@ -10,6 +10,9 @@ user-invocable: false
 Use this skill for Gate A step 1: discussion.
 Its job is to build an intentionally broad but bounded view of the current decision landscape, then narrow to the focus areas that matter most, and record that history in `records/{discussion-id}.md` before any decision promotion.
 
+## Document Ownership
+Before writing a conclusion, classify its document role. Keep each project-specific binding constraint in the applicable `DECISIONS.yml` as the canonical source, keep rationale and history in `records/{discussion-id}.md`, and do not copy the same constraint into `AGENTS.md`, `PRINCIPLES.md`, `DOD.md`, `README.md`, or skill files; update those documents only when their own operational or explanatory roles require distinct content.
+
 ## Required Inputs
 - Discussion ID
 - Target decision IDs or decision scope
