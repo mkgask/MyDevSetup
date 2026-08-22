@@ -75,12 +75,16 @@ However, anything that should be ethically prohibited remains prohibited regardl
 ---
 # Logs
 
-- System logs and operation logs are output to the same directory, distinguished by the prefixes `sys_` and `op_`.
-- `debug` and `warning` levels go to the system log; `info` goes to the operation log; `error` goes to both.
-- Logs are output simultaneously to the console and files; log separation applies only to files, while the console displays all logs.
-- The standard log format is `[<datetime>] [<loglevel>] <logmessage>`.
-- Include emojis in the log level: ⚪️DEBUG, ✅️ INFO, ⚠️WARNING, ❌️ERROR.
-- Log rotation deletes old files when the retention period exceeds one month or the file count exceeds 1024.
-- Log rotation must be toggleable (ON/OFF), allowing it to be disabled during development and enabled in production.
+- Logs are output to both the console and files.
+- While a log channel is enabled, logs for that channel are output simultaneously to the console and the corresponding file. On the console, all records from enabled channels are displayed sequentially without being separated by `sys-` or `op-` prefixes; channel separation applies only to file output.
+- The standard log format is `[<datetime>] [<loglevel>] [<modulename>] <logmessage>`.
+- Log levels include emojis: `⚪️DEBUG`, `✅️INFO`, `⚠️WARNING`, `❌️ERROR`, `🟦USER`.
+- Log files follow the format `<prefix>-<YYYYMMDD>-<random_id5>.log`. The prefix token is either `sys` or `op`, and `random_id5` consists of exactly five lowercase alphanumeric characters; the system retries if a filename collision occurs.
+- Old files are deleted if the retention period exceeds one month or the number of files exceeds 1,024.
+- Log rotation can be toggled on or off, allowing it to be disabled during development and enabled in production.
+- System logs and user operation logs are output to the same directory but distinguished by the display prefixes `sys-` and `op-`.
+- All logs not classified as internal processing, diagnostic information, audit records, or user operation logs are sent to the system logs.
+- Audit records are sent to the system logs, even if triggered by a user operation.
+- User operation log content includes only the operation performed and its result; common metadata required for the standard log format remains available. `🟦USER` records and results of successful user operations are sent to the user operation logs. For errors caused by user operations, the operation and failure result are sent to the user operation logs, while diagnostic records are sent to the system logs. `🟦USER` logs are not written to the system logs; the output destination is not determined solely by the log level.
 
 
