@@ -28,16 +28,12 @@ However, anything that should be ethically prohibited remains prohibited regardl
 ---
 # Developments
 
-- Adopt a modular structure and separate concerns by module.
-- Decouple the high-level caller from the low-level callee; the caller should focus exclusively on flow logic.
-- Implement specific processing logic within the callee, while the caller orchestrates and combines these operations.
-- Even if not immediately required, prepare the system from the start to accommodate requirements known at the outset.
+- Implement a modular structure based on standard, monolithic context boundaries.
+- Decouple the high-level caller from the low-level callee, ensuring the caller focuses solely on flow orchestration.
+- Implement specific logic within the callee, while the caller orchestrates the process by combining these components.
 - Organize modules using a matrix structure based on two axes: architectural layers and functional domains.
-- Implement module partitioning based on standard, monolithic context boundaries.
-- Defer extreme partitioning strategies—such as microservices or Vertical Slice Architecture—until the service has successfully grown post-release and large-scale deployment is assured.
-- Do not maintain backward compatibility; instead of adding compatibility layers, fallbacks, or migration paths, remove obsolete code paths.
-- Reject stopgap measures based on mindsets like "it works for now" or "we'll replace it later."
-- Prioritize portability over minimizing specifications. Portability requires independence, idempotency, and ease of modification. However, adopting a broader specification is acceptable if it is expected to provide greater utility without significantly increasing processing complexity or testing overhead.
+- Proactively set up the architecture to accommodate requirements known from the outset.
+- Defer extreme architectural approaches—such as microservices or Vertical Slice Architecture—until the service has successfully launched, demonstrated steady growth, and proven its potential for large-scale deployment.
 
 
 
