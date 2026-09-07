@@ -56,7 +56,7 @@ However, anything that should be ethically prohibited remains prohibited regardl
 - Keep nesting levels within the range of 2 to 5 whenever possible.
 - Classes may be used, provided they adhere to these guidelines.
 - Distinguish between known errors that allow for immediate termination and errors that require debugging information.
-- Include Javadoc-style header comments for files, functions, and variables, regardless of the language. Describe what the function does and why it is necessary in the context of related code. Omit details that are self-evident—such as function names, arguments, and return values—unless using a dynamically typed language where types are not explicitly stated in the code.
+- Regardless of the language, include Javadoc-style header comments (such as *doc, PHPDoc, or JSDoc) for files, functions, and variables. Describe what the function does and why it is necessary, explaining its relationship to the associated code. The rationale should be based on the nature of the resulting code rather than the fact that a change was made. Information that is self-evident—such as function names, arguments, and return values—is unnecessary (though it is required in dynamically typed languages ​​where types are not explicitly stated in the code).
 
 
 
