@@ -38,6 +38,7 @@ However, anything that should be ethically prohibited remains prohibited regardl
 - Do not maintain backward compatibility; instead of adding compatibility layers, fallbacks, or migration paths, remove obsolete code paths.
 - Reject stopgap measures based on mindsets like "it works for now" or "we'll replace it later."
 - Prioritize portability over minimizing specifications. Portability requires independence, idempotency, and ease of modification. However, adopting a broader specification is acceptable if it is expected to provide greater utility without significantly increasing processing complexity or testing overhead.
+- Avoid over-applying YAGNI and churning out specialized code; instead, take known future requirements into account when handling concerns like the separation of concerns and file organization.
 
 
 
