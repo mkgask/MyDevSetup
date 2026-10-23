@@ -2,6 +2,16 @@
 
 自分で作って自分で使うための、AI 開発環境セットアップ用リポジトリです。
 
+## First setup (Linux/WSL)
+
+`install.sh` は最後に `.dev/dev-tools.sh` を実行するため、その前に OS の初期セットアップを実行してください。`curl` が必要です。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash
+```
+
+通常ユーザーで実行してください。`sudo` を使うのは apt の操作だけで、HackGen フォントはユーザー単位で導入します。旧版で配置された `.dev/first-setup.sh` は自動で削除・更新しません。不要な場合は手動で削除してください。
+
 ## Install
 
 導入先のプロジェクトのルートディレクトリで実行してください。

@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+# 使用例（OSセットアップ後、install.shより前に通常ユーザーで実行）:
+#   curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash
+#     apt依存パッケージを導入し、HackGenフォントが揃っていない場合は現在のユーザー向けに導入します。
+#   curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash -s -- --help
+#     使用方法を表示します（-hも同じ）。セットアップ処理は実行しません。
+# curlが必要です。Linux/WSLのapt-get環境向けで、sudoを使うのはapt-getの実行時だけです。
+# 開発ツール自体は導入しません。
+
 set -euo pipefail
 
 APT_PACKAGES=(
@@ -118,6 +126,7 @@ install_hackgen_fonts() (
 	fi
 
 	font_directory="$data_home/fonts/HackGen"
+
 	if [[ -f "$font_directory/$HACKGEN_REGULAR_FONT" && -f "$font_directory/$HACKGEN_BOLD_FONT" ]]; then
 		log_info 'User font pair is already installed; skipping download'
 		return 0
@@ -214,6 +223,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 APT_COMMAND=(apt-get)
+
 if [[ "$EUID" -ne 0 ]]; then
 	if ! command -v sudo >/dev/null 2>&1; then
 		log_error 'sudo is required when first-setup.sh is not run as root'

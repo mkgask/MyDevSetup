@@ -168,15 +168,10 @@ prepare_fixture() {
 	cp "$PROJECT_DIRECTORY/install.sh" "$SOURCE_ROOT/install.sh"
 	cp "$PROJECT_DIRECTORY/templates/AGENTS.md" "$SOURCE_ROOT/templates/AGENTS.md"
 	cp "$PROJECT_DIRECTORY/templates/dev-tools.sh" "$SOURCE_ROOT/templates/dev-tools.sh"
-	cp "$PROJECT_DIRECTORY/templates/first-setup.sh" "$SOURCE_ROOT/templates/first-setup.sh"
 	cp "$PROJECT_DIRECTORY/templates/.docs/PRINCIPLES.md" "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md"
 
 	: > "$DODKIT_LOG"
 	: > "$HELPER_ARGS_LOG"
-	FIRST_SETUP_EXECUTION_MARKER="$FIXTURE_ROOT/first-setup-executed"
-	write_mock_command "$SOURCE_ROOT/templates/first-setup.sh" \
-		'printf "first-setup-ran\n" > "$FIRST_SETUP_EXECUTION_MARKER"' \
-		'exit 77'
 
 	write_mock_command "$FIXTURE_ROOT/dodkit.sh" \
 		'printf "DODKIT_RAN\n"' \
@@ -192,7 +187,7 @@ prepare_fixture() {
 			'exit 0'
 	done
 
-	export FIXTURE_ROOT SOURCE_ROOT TARGET_ROOT MOCK_BIN MOCK_HOME DODKIT_LOG OUTPUT_LOG HELPER_ARGS_LOG FIRST_SETUP_EXECUTION_MARKER
+	export FIXTURE_ROOT SOURCE_ROOT TARGET_ROOT MOCK_BIN MOCK_HOME DODKIT_LOG OUTPUT_LOG HELPER_ARGS_LOG
 }
 
 run_installer_noninteractive() {
@@ -215,14 +210,11 @@ test_default_helper_deployment_and_dodkit_order() {
 	[[ -f "$TARGET_ROOT/AGENTS.md" ]] || fail_test 'AGENTS.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper was not deployed' || return 1
-	[[ -f "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup helper was not deployed' || return 1
+	[[ ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup bootstrap should not be deployed to the project' || return 1
 	[[ -x "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'deployed dev-tools helper should be executable' || return 1
-	[[ -x "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'deployed first-setup helper should be executable' || return 1
 	[[ ! -x "$TARGET_ROOT/AGENTS.md" ]] || fail_test 'AGENTS.md should remain non-executable' || return 1
 	[[ ! -x "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md should remain non-executable' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
-	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'first-setup helper content was not copied' || return 1
-	[[ ! -e "$FIRST_SETUP_EXECUTION_MARKER" ]] || fail_test 'first-setup helper should not run automatically' || return 1
 
 	assert_contains 'copilot' "$DODKIT_LOG" 'forward DODKit target argument' || return 1
 	assert_contains '--custom-flag' "$DODKIT_LOG" 'forward DODKit custom argument' || return 1
@@ -239,7 +231,6 @@ test_default_helper_deployment_and_dodkit_order() {
 
 test_current_helpers_are_made_executable_on_reinstall() {
 	local dev_tools_permissions=""
-	local first_setup_permissions=""
 	local agents_permissions=""
 	local principles_permissions=""
 
@@ -251,11 +242,9 @@ test_current_helpers_are_made_executable_on_reinstall() {
 	)
 
 	chmod 0640 "$TARGET_ROOT/.dev/dev-tools.sh"
-	chmod 0604 "$TARGET_ROOT/.dev/first-setup.sh"
 	chmod 0640 "$TARGET_ROOT/AGENTS.md"
 	chmod 0604 "$TARGET_ROOT/.docs/PRINCIPLES.md"
 	dev_tools_permissions="$(stat -c '%A' "$TARGET_ROOT/.dev/dev-tools.sh")"
-	first_setup_permissions="$(stat -c '%A' "$TARGET_ROOT/.dev/first-setup.sh")"
 	agents_permissions="$(stat -c '%A' "$TARGET_ROOT/AGENTS.md")"
 	principles_permissions="$(stat -c '%A' "$TARGET_ROOT/.docs/PRINCIPLES.md")"
 
@@ -265,9 +254,7 @@ test_current_helpers_are_made_executable_on_reinstall() {
 	)
 
 	[[ -x "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'reinstall should restore dev-tools executable permission' || return 1
-	[[ -x "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'reinstall should restore first-setup executable permission' || return 1
 	assert_rw_permissions_unchanged "$dev_tools_permissions" "$TARGET_ROOT/.dev/dev-tools.sh" 'reinstall should preserve dev-tools rw permissions' || return 1
-	assert_rw_permissions_unchanged "$first_setup_permissions" "$TARGET_ROOT/.dev/first-setup.sh" 'reinstall should preserve first-setup rw permissions' || return 1
 	assert_rw_permissions_unchanged "$agents_permissions" "$TARGET_ROOT/AGENTS.md" 'reinstall should preserve AGENTS.md permissions' || return 1
 	assert_rw_permissions_unchanged "$principles_permissions" "$TARGET_ROOT/.docs/PRINCIPLES.md" 'reinstall should preserve PRINCIPLES.md permissions' || return 1
 }
@@ -324,19 +311,21 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 	assert_contains '- `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.' "$TARGET_ROOT/AGENTS.md" 'record existing CodeGraph installation in AGENTS.md' || return 1
 	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'default ask policy should update PRINCIPLES.md without a TTY' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
-	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'default ask policy should update first-setup.sh without a TTY' || return 1
+	assert_contains "$existing_first_setup" "$TARGET_ROOT/.dev/first-setup.sh" 'leave an existing first-setup copy unchanged' || return 1
 	assert_contains 'using default helper directory: .dev' "$OUTPUT_LOG" 'use default destination without a TTY' || return 1
 }
 
 test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 	local existing_agents='# user-owned AGENTS.md'
 	local existing_principles='# user-owned PRINCIPLES.md'
+	local existing_first_setup='# stale first-setup'
 
 	prepare_fixture overwrite-no
 	mkdir -p "$TARGET_ROOT/.docs" "$TARGET_ROOT/.dev"
 	printf '%s\n' "$existing_agents" > "$TARGET_ROOT/AGENTS.md"
 	printf '%s\n' "$existing_principles" > "$TARGET_ROOT/.docs/PRINCIPLES.md"
 	printf '%s\n' '# stale helper' > "$TARGET_ROOT/.dev/dev-tools.sh"
+	printf '%s\n' "$existing_first_setup" > "$TARGET_ROOT/.dev/first-setup.sh"
 
 	(
 		cd "$TARGET_ROOT"
@@ -346,7 +335,7 @@ test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 	assert_contains "$existing_agents" "$TARGET_ROOT/AGENTS.md" 'overwrite=no should preserve AGENTS.md' || return 1
 	assert_contains "$existing_principles" "$TARGET_ROOT/.docs/PRINCIPLES.md" 'overwrite=no should preserve PRINCIPLES.md' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh" || fail_test 'overwrite=no should not suppress unconditional helper updates' || return 1
-	cmp -s "$SOURCE_ROOT/templates/first-setup.sh" "$TARGET_ROOT/.dev/first-setup.sh" || fail_test 'overwrite=no should not suppress first-setup helper updates' || return 1
+	assert_contains "$existing_first_setup" "$TARGET_ROOT/.dev/first-setup.sh" 'overwrite=no should leave an existing first-setup copy unchanged' || return 1
 	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
 	assert_contains 'no' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
 }
@@ -394,11 +383,9 @@ test_existing_dev_directory_destination_prompt() {
 	)
 
 	[[ -f "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected helper destination was not used' || return 1
-	[[ -f "$TARGET_ROOT/.custom-tools/first-setup.sh" ]] || fail_test 'selected first-setup destination was not used' || return 1
 	[[ -x "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected dev-tools helper should be executable' || return 1
-	[[ -x "$TARGET_ROOT/.custom-tools/first-setup.sh" ]] || fail_test 'selected first-setup helper should be executable' || return 1
 	[[ ! -e "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper destination was used despite selection' || return 1
-	[[ ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'default first-setup destination was used despite selection' || return 1
+	[[ ! -e "$TARGET_ROOT/.custom-tools/first-setup.sh" && ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup bootstrap should not be deployed to either helper directory' || return 1
 }
 
 test_helper_failure_status_is_reported() {
