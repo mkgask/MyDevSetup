@@ -4,7 +4,7 @@ set -euo pipefail
 
 TESTS_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIRECTORY="$(cd -- "$TESTS_DIRECTORY/.." && pwd)"
-FIRST_SETUP_PATH="$PROJECT_DIRECTORY/templates/first-setup.sh"
+FIRST_SETUP_PATH="$PROJECT_DIRECTORY/first-setup.sh"
 ORIGINAL_PATH="$PATH"
 TEST_ROOT="$(mktemp -d)"
 PASS_COUNT=0

@@ -203,9 +203,10 @@ decisions:
           sub_decisions: []
         - id: installer-012-3-helper-overwrite-exception
           decision: >
-            `dev-tools.sh` と同じ選択済み配置先に置く `first-setup.sh` も、installer-011-9 の既存契約どおり常に上書きし、`--overwrite no` でもこれら helper の更新を抑止しない。
+            `install.sh` の無条件上書き例外は、installer-011-9 の既存契約に従って配布する `dev-tools.sh` に限る。
+            root の `first-setup.sh` はプロジェクトへ配布しないため、この上書き例外の対象にしない。
           status: "✅️Implementation Approved"
-          link: "records/first-setup-002-installer-deployment.md"
+          link: "records/first-setup-005-bootstrap-distribution.md"
           sub_decisions: []
 
 
@@ -495,19 +496,19 @@ decisions:
 
         - id: installer-011-24-executable-helper-deployment
           decision: >
-            install.sh は配布後に直接実行できるよう、`templates/dev-tools.sh` と `templates/first-setup.sh` に対応する配置先ファイルへ内容の新規コピー時と同一内容による早期完了時の両方で `chmod +x` のみを適用し、既存の rw permission を変更しない。
-            それ以外の配布アセット（AGENTS.md、PRINCIPLES.md）の permission は変更せず、first-setup.sh の自動実行、shell起動ファイル・PATH変更、DODKitとhelperの処理順序は変更しない。
+            install.sh は配布後に直接実行できるよう、`templates/dev-tools.sh` の配置先ファイルへ内容の新規コピー時と同一内容による早期完了時の両方で `chmod +x` のみを適用し、既存の rw permission を変更しない。
+            それ以外の配布アセット（AGENTS.md、PRINCIPLES.md）の permission は変更せず、root の `first-setup.sh` は配布・自動実行しない。shell起動ファイル・PATH変更、DODKitとhelperの処理順序も変更しない。
           status: "✅️Implementation Approved"
-          link: "records/installer-002-executable-helper-assets.md"
+          link: "records/first-setup-005-bootstrap-distribution.md"
           sub_decisions: []
 
   first-setup:
     - id: installer-011-22-first-setup-dependencies
       decision: >
-        templates/first-setup.sh は Linux/WSL の apt-get 環境で、OSセットアップ後に手動実行する初期準備用テンプレートとし、
+        root の first-setup.sh は Linux/WSL の apt-get 環境で、OSセットアップ後に手動実行する初期準備用スクリプトとし、
         開発ツールと初期セットアップ機能の依存パッケージ集合を管理する。
       status: "✅️Implementation Approved"
-      link: "records/first-setup-003-hackgen-font-installation.md"
+      link: "records/first-setup-005-bootstrap-distribution.md"
       sub_decisions:
         - id: installer-011-22-1-dependency-package-set
           decision: >
@@ -525,7 +526,8 @@ decisions:
           sub_decisions: []
         - id: installer-011-22-3-first-setup-lifecycle
           decision: >
-            first-setup.sh はOSセットアップ後、dev-tools.shを実行する前に一度だけ手動実行する前提とする。
+            first-setup.sh はOSセットアップ後、install.shを実行する前に一度だけ手動実行する前提とする。
+            install.sh はDODKitの後にdev-tools.shを実行するため、初期準備の依存パッケージを先に導入する。
             誤って再実行されても実行自体は拒否せず、APT依存の再実行はinstaller-011-22-2-apt-installation-contractに従い、機能ごとの再実行時副作用は各機能の既存判定で抑止する。
           status: "✅️Implementation Approved"
           sub_decisions: []
@@ -549,33 +551,44 @@ decisions:
           decision: first-setup.shに対応するfocused testはtests/first-setup.test.shに置く。
           status: "✅️Implementation Approved"
           sub_decisions: []
+        - id: installer-011-22-8-header-usage-examples
+          decision: >
+            first-setup.shのヘッダコメントは直接実行例 `curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash` と
+            ヘルプ例 `curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash -s -- --help`（`-h`も同じ）を示し、
+            curlとLinux/WSLのapt-get環境が必要であること、apt依存導入、未導入時のユーザー単位HackGen導入、aptだけへのsudo適用、
+            開発ツール自体は導入しない境界、およびinstall.shより先に実行することを正確に説明する。
+            スクリプト全体をsudoで実行する例は示さない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
 
     - id: installer-011-23-first-setup-deployment
       decision: >
-        install.sh は templates/first-setup.sh をdev-tools.shのcompanionとなる手動実行用配布アセットとして扱う。
+        first-setup.sh はrepository rootに置く単独の手動実行用bootstrapとし、install.shのプロジェクト配布アセットに含めない。
       status: "✅️Implementation Approved"
-      link: "records/first-setup-002-installer-deployment.md"
+      link: "records/first-setup-005-bootstrap-distribution.md"
       sub_decisions:
-        - id: installer-011-23-1-helper-destination
-          decision: >
-            first-setup.shはtemplates/dev-tools.shと同じ選択済み配置ディレクトリへコピーし、既定の配置先は対象プロジェクトの`.dev/first-setup.sh`とする。
-            既存の`.dev/`で利用者が別の配置先を選んだ場合も、その同じディレクトリへ配置する。
-          status: "✅️Implementation Approved"
-          sub_decisions: []
         - id: installer-011-23-2-manual-execution-boundary
-          decision: first-setup.shはinstall.shによる配布後に自動実行せず、手動実行用アセットとして残す。
+          decision: install.shはfirst-setup.shを配布も自動実行もせず、利用者がOSセットアップ後、install.shより前に手動実行する。
           status: "✅️Implementation Approved"
           sub_decisions: []
-        - id: installer-011-23-3-deployment-asset-loop
-          decision: 配布アセット定義は既存のsource path / destination path / asset nameの3要素リストとループを利用する。
+        - id: installer-011-23-4-standalone-bootstrap-entrypoint
+          decision: >
+            first-setup.shはrootのスクリプトをGitHub rawのmainからcurlで取得し、通常ユーザーのbashで実行する。
+            READMEはこのコマンドをinstall.shの前に案内し、curlが事前に利用可能であることを示す。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-23-5-existing-copy-preservation
+          decision: >
+            install.shは既存プロジェクトに配置済みの `.dev/first-setup.sh` を自動削除・更新しない。
+            新規配布と更新を停止し、既存ファイルは利用者が管理する。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
     - id: installer-011-25-hackgen-font-installation
       decision: >
-        templates/first-setup.sh はAPT依存導入後にHackGen Nerd Fontsの指定フォントをユーザー単位で導入し、VS Codeのフォント設定は変更しない。
+        root の first-setup.sh はAPT依存導入後にHackGen Nerd Fontsの指定フォントをユーザー単位で導入し、VS Codeのフォント設定は変更しない。
       status: "✅️Implementation Approved"
-      link: "records/first-setup-003-hackgen-font-installation.md"
+      link: "records/first-setup-005-bootstrap-distribution.md"
       sub_decisions:
         - id: installer-011-25-1-first-setup-integration
           decision: >
