@@ -506,16 +506,16 @@ decisions:
     - id: installer-011-22-first-setup-dependencies
       decision: >
         root の first-setup.sh は Linux/WSL の apt-get 環境で、OSセットアップ後に手動実行する初期準備用スクリプトとし、
-        開発ツールと初期セットアップ機能の依存パッケージ集合を管理する。
+        開発ツールと初期セットアップ機能の依存パッケージ集合を管理し、未導入のproto/miseをユーザー単位で導入する。
       status: "✅️Implementation Approved"
-      link: "records/first-setup-005-bootstrap-distribution.md"
+      link: "records/first-setup-006-manager-bootstrap.md"
       sub_decisions:
         - id: installer-011-22-1-dependency-package-set
           decision: >
             first-setup.sh のAPT依存パッケージ集合は `patch`、`bison`、`libdb-dev`、`build-essential`、`libyaml-dev`、
             `libssl-dev`、`libreadline6-dev`、`libffi-dev`、`autoconf`、`libgdbm-dev`、`zlib1g-dev`、`rustc`、
             `libncurses5-dev`、`libgdbm6`、`libgmp-dev`、`fontconfig`、`curl`、`git`、`gh`、`jq`、`unzip`、
-            `gzip`、`xz-utils`を明示的に管理し、将来ほかの開発ツールや初期セットアップ機能に必要なパッケージもこの集合へ追加する。
+            `gzip`、`xz-utils`、`tar`を明示的に管理し、将来ほかの開発ツールや初期セットアップ機能に必要なパッケージもこの集合へ追加する。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-011-22-2-apt-installation-contract
@@ -528,7 +528,8 @@ decisions:
           decision: >
             first-setup.sh はOSセットアップ後、install.shを実行する前に一度だけ手動実行する前提とする。
             install.sh はDODKitの後にdev-tools.shを実行するため、初期準備の依存パッケージを先に導入する。
-            誤って再実行されても実行自体は拒否せず、APT依存の再実行はinstaller-011-22-2-apt-installation-contractに従い、機能ごとの再実行時副作用は各機能の既存判定で抑止する。
+            誤って再実行されても実行自体は拒否せず、APT依存の再実行はinstaller-011-22-2-apt-installation-contractに従い、
+            proto/miseの既存導入は更新せず、PATH設定を重複させない。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-011-22-4-output-contract
@@ -539,12 +540,15 @@ decisions:
           sub_decisions: []
         - id: installer-011-22-5-supported-environment
           decision: >
-            first-setup.shはLinux/WSLのapt-get環境だけを対象とする。apt-getが利用できない、または非root環境でsudoが利用できない場合は明示的なエラーで終了し、
-            他のpackage managerへフォールバックしない。
+            first-setup.shはLinux/WSLのapt-get環境だけを対象とし、セットアップ処理は通常ユーザーで実行する。
+            rootでのセットアップ実行は副作用を起こす前に拒否する。apt-getが利用できない環境、または非root環境でsudoが利用できない場合も明示的なエラーで終了し、
+            他のpackage managerへフォールバックしない。ヘルプ表示は副作用なく利用できる。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-011-22-6-side-effect-boundary
-          decision: first-setup.shは開発ツール自体、shell起動ファイル、PATH、manager設定を変更しない。
+          decision: >
+            first-setup.shのshell起動ファイル、PATH、manager設定への永続変更はmanager bootstrapの範囲に限る。
+            proto/miseのユーザー単位導入とPATH公開以外ではこれらを変更せず、言語ランタイム、plugin、その他の開発ツールやmanager activation hookを導入しない。
           status: "✅️Implementation Approved"
           sub_decisions: []
         - id: installer-011-22-7-focused-test-boundary
@@ -555,9 +559,25 @@ decisions:
           decision: >
             first-setup.shのヘッダコメントは直接実行例 `curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash` と
             ヘルプ例 `curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash -s -- --help`（`-h`も同じ）を示し、
-            curlとLinux/WSLのapt-get環境が必要であること、apt依存導入、未導入時のユーザー単位HackGen導入、aptだけへのsudo適用、
-            開発ツール自体は導入しない境界、およびinstall.shより先に実行することを正確に説明する。
+            curlとLinux/WSLのapt-get環境が必要であること、通常ユーザーで実行すること、apt依存導入、未導入時のproto/miseとHackGenのユーザー単位導入、
+            aptだけへのsudo適用、言語ランタイム・plugin・その他の開発ツールは導入しない境界、manager PATHを~/.bashrcへ追加すること、
+            およびinstall.shより先に実行することを正確に説明する。
             スクリプト全体をsudoで実行する例は示さない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-9-development-manager-bootstrap
+          decision: >
+            first-setup.shはprotoとmiseを公式の非対話installerで導入し、PATH上または標準ユーザー導入先
+            (`~/.proto/bin/proto`、`~/.local/bin/mise`)に既存実行ファイルがある場合は更新せずスキップする。
+            不足しているmanagerはupstream installerの既定stable releaseで導入し、言語ランタイム、plugin、その他の開発ツールは導入しない。
+            導入失敗は明示的なエラーで終了する。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
+        - id: installer-011-22-10-manager-path-setup
+          decision: >
+            manager bootstrap成功後、protoとmiseの標準ユーザーbin directory (`~/.proto/bin`、`~/.local/bin`)だけをPATHに公開する行を
+            ~/.bashrcへ冪等に追加できる。これはfirst-setup.shが行う唯一の永続shell/PATH変更であり、activation hookやmanager設定は追加しない。
+            追加に失敗した場合は明示的なエラーで終了する。対話shellでmanager commandを使うにはsource ~/.bashrcまたは新しいshellを使う。
           status: "✅️Implementation Approved"
           sub_decisions: []
 
@@ -575,7 +595,9 @@ decisions:
           decision: >
             first-setup.shはrootのスクリプトをGitHub rawのmainからcurlで取得し、通常ユーザーのbashで実行する。
             READMEはこのコマンドをinstall.shの前に案内し、curlが事前に利用可能であることを示す。
+            manager commandを現在の対話shellで使うためsource ~/.bashrcまたは新しいshellを案内する。これはdev-tools.shのmanager検出の前提ではない。
           status: "✅️Implementation Approved"
+          link: "records/first-setup-006-manager-bootstrap.md"
           sub_decisions: []
         - id: installer-011-23-5-existing-copy-preservation
           decision: >

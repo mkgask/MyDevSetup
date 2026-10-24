@@ -2,11 +2,12 @@
 
 # 使用例（OSセットアップ後、install.shより前に通常ユーザーで実行）:
 #   curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash
-#     apt依存パッケージを導入し、HackGenフォントが揃っていない場合は現在のユーザー向けに導入します。
+#     apt依存パッケージと未導入のproto/miseを導入し、HackGenフォントが揃っていない場合は現在のユーザー向けに導入します。
+#     managerの実行ファイルが標準導入先にある場合だけ、そのPATHを~/.bashrcへ追加します。
 #   curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash -s -- --help
 #     使用方法を表示します（-hも同じ）。セットアップ処理は実行しません。
-# curlが必要です。Linux/WSLのapt-get環境向けで、sudoを使うのはapt-getの実行時だけです。
-# 開発ツール自体は導入しません。
+# curlが必要です。Linux/WSLのapt-get環境向けで、通常ユーザーで実行してください。sudoを使うのはapt-getの実行時だけです。
+# 言語ランタイム、plugin、その他の開発ツールは導入せず、manager activation hookも追加しません。
 
 set -euo pipefail
 
@@ -34,11 +35,15 @@ APT_PACKAGES=(
 	unzip
 	gzip
 	xz-utils
+	tar
 )
 
+PROTO_INSTALLER_URL='https://moonrepo.dev/install/proto.sh'
+MISE_INSTALLER_URL='https://mise.run'
 HACKGEN_RELEASE_API_URL='https://api.github.com/repos/yuru7/HackGen/releases/latest'
 HACKGEN_REGULAR_FONT='HackGenConsoleNF-Regular.ttf'
 HACKGEN_BOLD_FONT='HackGenConsoleNF-Bold.ttf'
+MANAGER_PATH_LINE='export PATH="$HOME/.proto/bin:$HOME/.local/bin:$PATH"'
 
 log_info() {
 	printf '[INFO] %s\n' "$1"
@@ -66,6 +71,119 @@ log_success() {
 	else
 		printf '[✅️SUCCESS] %s\n' "$1"
 	fi
+}
+
+manager_command_available() {
+	local manager_name="$1"
+	local standard_path="$2"
+	local manager_command_path=""
+
+	manager_command_path="$(type -P "$manager_name" 2>/dev/null || true)"
+	[[ -n "$manager_command_path" || -x "$standard_path" ]]
+}
+
+install_proto() (
+	local installer_path=""
+
+	if ! installer_path="$(mktemp)"; then
+		log_error 'Failed to create a temporary file for the proto installer'
+		return 1
+	fi
+	trap 'rm -f -- "$installer_path"' EXIT
+
+	if ! curl --fail --silent --show-error --location "$PROTO_INSTALLER_URL" > "$installer_path"; then
+		log_error 'Failed to download the proto installer'
+		return 1
+	fi
+	if [[ ! -s "$installer_path" ]]; then
+		log_error 'The proto installer download was empty'
+		return 1
+	fi
+	if ! bash "$installer_path" --yes --no-profile; then
+		log_error 'Failed to install proto'
+		return 1
+	fi
+	if [[ ! -x "$HOME/.proto/bin/proto" ]]; then
+		log_error 'The proto installer did not create the expected executable'
+		return 1
+	fi
+)
+
+install_mise() (
+	local installer_path=""
+
+	if ! installer_path="$(mktemp)"; then
+		log_error 'Failed to create a temporary file for the mise installer'
+		return 1
+	fi
+	trap 'rm -f -- "$installer_path"' EXIT
+
+	if ! curl --fail --silent --show-error --location "$MISE_INSTALLER_URL" > "$installer_path"; then
+		log_error 'Failed to download the mise installer'
+		return 1
+	fi
+	if [[ ! -s "$installer_path" ]]; then
+		log_error 'The mise installer download was empty'
+		return 1
+	fi
+	if ! sh "$installer_path"; then
+		log_error 'Failed to install mise'
+		return 1
+	fi
+	if [[ ! -x "$HOME/.local/bin/mise" ]]; then
+		log_error 'The mise installer did not create the expected executable'
+		return 1
+	fi
+)
+
+ensure_manager_path_in_bashrc() {
+	local bashrc_path="$HOME/.bashrc"
+
+	if [[ -d "$bashrc_path" ]]; then
+		log_error 'The user .bashrc path is a directory'
+		return 1
+	fi
+	if [[ -e "$bashrc_path" && ! -f "$bashrc_path" ]]; then
+		log_error 'The user .bashrc path is not a regular file'
+		return 1
+	fi
+	if [[ -f "$bashrc_path" && ! -r "$bashrc_path" ]]; then
+		log_error 'The user .bashrc file is not readable'
+		return 1
+	fi
+	if [[ -f "$bashrc_path" ]] && grep -Fqx -- "$MANAGER_PATH_LINE" "$bashrc_path"; then
+		return 0
+	fi
+	if [[ -s "$bashrc_path" ]] && ! printf '\n' >> "$bashrc_path"; then
+		log_error 'Failed to update manager PATH in ~/.bashrc'
+		return 1
+	fi
+	if ! printf '%s\n' "$MANAGER_PATH_LINE" >> "$bashrc_path"; then
+		log_error 'Failed to update manager PATH in ~/.bashrc'
+		return 1
+	fi
+}
+
+ensure_development_managers() {
+	log_info 'Preparing development tool managers'
+
+	if ! manager_command_available proto "$HOME/.proto/bin/proto"; then
+		install_proto
+	fi
+	if ! manager_command_available mise "$HOME/.local/bin/mise"; then
+		install_mise
+	fi
+	if ! manager_command_available proto "$HOME/.proto/bin/proto"; then
+		log_error 'proto is not available after manager setup'
+		return 1
+	fi
+	if ! manager_command_available mise "$HOME/.local/bin/mise"; then
+		log_error 'mise is not available after manager setup'
+		return 1
+	fi
+
+	ensure_manager_path_in_bashrc
+	log_success 'Development tool managers are ready'
 }
 
 extract_hackgen_font() {
@@ -199,8 +317,9 @@ Usage:
 
 Description:
 	Install the apt packages required by the development tools.
+	Install missing development-library manager binaries.
 	Prepare the user font environment.
-	This script does not install development tools.
+	This script does not install language runtimes, plugins, or other development tools.
 USAGE
 }
 
@@ -215,6 +334,16 @@ if [[ "$#" -gt 0 ]]; then
 			exit 2
 			;;
 	esac
+fi
+
+if [[ "$EUID" -eq 0 ]]; then
+	log_error 'first-setup.sh must be run as a regular user'
+	exit 1
+fi
+
+if [[ -z "${HOME:-}" || ! -d "$HOME" ]]; then
+	log_error 'HOME must refer to an existing user directory'
+	exit 1
 fi
 
 if ! command -v apt-get >/dev/null 2>&1; then
@@ -239,4 +368,5 @@ log_info 'Installing development tool dependencies'
 "${APT_COMMAND[@]}" install -y "${APT_PACKAGES[@]}"
 
 log_success 'Development tool dependencies are installed'
+ensure_development_managers
 install_hackgen_fonts
