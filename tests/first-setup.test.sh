@@ -72,34 +72,69 @@ write_mock_command() {
 	chmod +x "$command_path"
 }
 
+write_mock_manager_installers() {
+	local mock_root="$1"
+	local mock_bin="$2"
+	local manager_script_directory="$mock_root/manager-installers"
+
+	mkdir -p "$manager_script_directory"
+	write_mock_command "$manager_script_directory/proto.sh" \
+		'printf "proto-installer %s\n" "$*" >> "$MOCK_LOG"' \
+		'if [[ "${MOCK_PROTO_INSTALL_FAIL:-0}" == 1 ]]; then exit 42; fi' \
+		'mkdir -p "$HOME/.proto/bin"' \
+		'printf "%s\n" "#!/usr/bin/env bash" "exit 0" > "$HOME/.proto/bin/proto"' \
+		'chmod +x "$HOME/.proto/bin/proto"'
+	write_mock_command "$manager_script_directory/mise.sh" \
+		'printf "mise-installer %s\n" "$*" >> "$MOCK_LOG"' \
+		'if [ "${MOCK_MISE_INSTALL_FAIL:-0}" = 1 ]; then exit 43; fi' \
+		'mkdir -p "$HOME/.local/bin"' \
+		'printf "%s\n" "#!/usr/bin/env bash" "exit 0" > "$HOME/.local/bin/mise"' \
+		'chmod +x "$HOME/.local/bin/mise"'
+	write_mock_command "$mock_bin/curl" \
+		'printf "curl %s\n" "$*" >> "$MOCK_LOG"' \
+		'case "$*" in' \
+		'  *moonrepo.dev/install/proto.sh*) cat "$MOCK_MANAGER_SCRIPT_DIR/proto.sh" ;;' \
+		'  *mise.run*) cat "$MOCK_MANAGER_SCRIPT_DIR/mise.sh" ;;' \
+		'  *) exit 1 ;;' \
+		'esac'
+}
+
+write_fake_installed_managers() {
+	local home_directory="$1"
+
+	mkdir -p "$home_directory/.proto/bin" "$home_directory/.local/bin"
+	write_mock_command "$home_directory/.proto/bin/proto" 'exit 0'
+	write_mock_command "$home_directory/.local/bin/mise" 'exit 0'
+}
+
 test_apt_commands() {
-	local expected_install="apt-get install -y patch bison libdb-dev build-essential libyaml-dev libssl-dev libreadline6-dev libffi-dev autoconf libgdbm-dev zlib1g-dev rustc libncurses5-dev libgdbm6 libgmp-dev fontconfig curl git gh jq unzip gzip xz-utils"
-	local expected_prefix="apt-get"
+	local expected_install="apt-get install -y patch bison libdb-dev build-essential libyaml-dev libssl-dev libreadline6-dev libffi-dev autoconf libgdbm-dev zlib1g-dev rustc libncurses5-dev libgdbm6 libgmp-dev fontconfig curl git gh jq unzip gzip xz-utils tar"
+	local expected_prefix="sudo apt-get"
 	local mock_root="$TEST_ROOT/apt-commands"
 	local mock_bin="$mock_root/bin"
 	local mock_log="$mock_root/commands.log"
 	local output_file="$mock_root/output.log"
 	local error_output="$mock_root/error.log"
 	local help_output="$mock_root/help.log"
+	local home_directory="$mock_root/home"
 	local font_data_home="$mock_root/data"
 	local font_directory="$font_data_home/fonts/HackGen"
+	local manager_path_line='export PATH="$HOME/.proto/bin:$HOME/.local/bin:$PATH"'
 	local update_line=""
 	local install_line=""
+	local path_line_count=""
 
-	mkdir -p "$mock_bin"
+	mkdir -p "$mock_bin" "$home_directory"
 	mkdir -p "$font_directory"
 	: > "$font_directory/HackGenConsoleNF-Regular.ttf"
 	: > "$font_directory/HackGenConsoleNF-Bold.ttf"
 	: > "$mock_log"
+	write_mock_manager_installers "$mock_root" "$mock_bin"
 	write_mock_command "$mock_bin/apt-get" \
 		'printf "apt-get %s\\n" "$*" >> "$MOCK_LOG"'
 	write_mock_command "$mock_bin/sudo" \
 		'printf "sudo %s\\n" "$*" >> "$MOCK_LOG"' \
 		'exec "$@"'
-
-	if [[ "$EUID" -ne 0 ]]; then
-		expected_prefix='sudo apt-get'
-	fi
 
 	if ! env NO_COLOR=1 PATH="$mock_bin:/usr/bin:/bin" "$FIRST_SETUP_PATH" --help > "$help_output" 2>&1; then
 		cat "$help_output" >&2
@@ -107,11 +142,12 @@ test_apt_commands() {
 	fi
 
 	assert_contains 'Install the apt packages required by the development tools.' "$help_output" 'describe generic development tool dependencies' || return 1
+	assert_contains 'Install missing development-library manager binaries.' "$help_output" 'describe manager bootstrap generically' || return 1
 	assert_contains 'Prepare the user font environment.' "$help_output" 'describe user font preparation generically' || return 1
 	assert_not_contains 'proto' "$help_output" 'do not name proto in first-setup help' || return 1
 	assert_not_contains 'Ruby' "$help_output" 'do not name Ruby in first-setup help' || return 1
 
-	if ! env NO_COLOR=1 XDG_DATA_HOME="$font_data_home" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+	if ! env NO_COLOR=1 HOME="$home_directory" XDG_DATA_HOME="$font_data_home" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" MOCK_MANAGER_SCRIPT_DIR="$mock_root/manager-installers" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
 		cat "$output_file" >&2
 		return 1
 	fi
@@ -120,17 +156,32 @@ test_apt_commands() {
 	install_line="$(awk -v expected="$expected_prefix install -y" '$0 ~ ("^" expected " ") { print NR; exit }' "$mock_log")"
 
 	assert_contains "$expected_install" "$mock_log" 'install all development tool dependencies' || return 1
-	assert_not_contains 'proto ' "$mock_log" 'do not invoke proto during first setup' || return 1
+	assert_command_logged 'proto-installer' "$mock_log" 'install missing proto with the official installer' || return 1
+	assert_command_logged 'mise-installer' "$mock_log" 'install missing mise with the official installer' || return 1
 	assert_contains '[INFO] Updating apt package index' "$output_file" 'use the shared info label' || return 1
 	assert_contains '[INFO] Installing development tool dependencies' "$output_file" 'describe generic dependency installation' || return 1
 	assert_contains '[✅️SUCCESS] Development tool dependencies are installed' "$output_file" 'use the generic success label' || return 1
+	assert_contains '[INFO] Preparing development tool managers' "$output_file" 'describe manager setup generically' || return 1
+	assert_contains '[✅️SUCCESS] Development tool managers are ready' "$output_file" 'use a generic manager success label' || return 1
 	assert_not_contains 'proto' "$output_file" 'do not name proto in first-setup output' || return 1
 	assert_not_contains 'Ruby' "$output_file" 'do not name Ruby in first-setup output' || return 1
 	assert_not_contains $'\033[' "$output_file" 'do not color output when NO_COLOR is set' || return 1
+	assert_contains "$manager_path_line" "$home_directory/.bashrc" 'add only manager PATH entries to the user bash profile' || return 1
 	if [[ -z "$update_line" || -z "$install_line" || "$update_line" -ge "$install_line" ]]; then
 		fail_test 'update apt package index before installing first-setup dependencies'
 		return 1
 	fi
+
+	: > "$mock_log"
+	if ! env NO_COLOR=1 HOME="$home_directory" XDG_DATA_HOME="$font_data_home" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" MOCK_MANAGER_SCRIPT_DIR="$mock_root/manager-installers" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+		cat "$output_file" >&2
+		return 1
+	fi
+	assert_command_not_logged 'proto-installer' "$mock_log" 'skip reinstalling an existing proto manager' || return 1
+	assert_command_not_logged 'mise-installer' "$mock_log" 'skip reinstalling an existing mise manager' || return 1
+	assert_command_not_logged 'curl' "$mock_log" 'skip manager downloads after both managers are installed' || return 1
+	path_line_count="$(grep -Fxc -- "$manager_path_line" "$home_directory/.bashrc")"
+	[[ "$path_line_count" == '1' ]] || fail_test 'keep the manager PATH entry idempotent across runs' || return 1
 
 	if env NO_COLOR=1 PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" "$FIRST_SETUP_PATH" --invalid > "$error_output" 2>&1; then
 		fail_test 'reject unsupported first-setup arguments'
@@ -140,19 +191,149 @@ test_apt_commands() {
 	assert_not_contains $'\033[' "$error_output" 'do not color errors when NO_COLOR is set' || return 1
 }
 
+test_root_rejection() {
+	local mock_root="$TEST_ROOT/root-rejection"
+	local mock_bin="$mock_root/bin"
+	local mock_log="$mock_root/commands.log"
+	local output_file="$mock_root/output.log"
+	local home_directory="$mock_root/home"
+
+	mkdir -p "$mock_bin" "$home_directory"
+	: > "$mock_log"
+	write_mock_command "$mock_bin/apt-get" \
+		'printf "apt-get %s\\n" "$*" >> "$MOCK_LOG"'
+	write_mock_command "$mock_bin/sudo" \
+		'printf "sudo %s\\n" "$*" >> "$MOCK_LOG"' \
+		'exec "$@"'
+
+	if [[ "$EUID" -eq 0 ]]; then
+		if env NO_COLOR=1 HOME="$home_directory" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+			fail_test 'reject setup execution as root'
+			return 1
+		fi
+	elif command -v unshare >/dev/null 2>&1 && unshare --user --map-root-user true 2>/dev/null; then
+		if unshare --user --map-root-user env NO_COLOR=1 HOME="$home_directory" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+			fail_test 'reject setup execution as root in a user namespace'
+			return 1
+		fi
+	else
+		printf '[SKIP] root rejection could not be exercised without user namespaces\n'
+		return 0
+	fi
+
+	assert_contains '[❌️ERROR] first-setup.sh must be run as a regular user' "$output_file" 'explain the root execution restriction' || return 1
+	assert_command_not_logged 'apt-get' "$mock_log" 'reject root before apt side effects' || return 1
+	assert_command_not_logged 'sudo' "$mock_log" 'reject root before sudo side effects' || return 1
+	[[ ! -e "$home_directory/.bashrc" ]] || fail_test 'do not modify shell startup files when rejecting root' || return 1
+}
+
+test_manager_installation_failure() {
+	local mock_root="$TEST_ROOT/manager-installation-failure"
+	local mock_bin="$mock_root/bin"
+	local mock_log="$mock_root/commands.log"
+	local output_file="$mock_root/output.log"
+	local home_directory="$mock_root/home"
+	local font_data_home="$mock_root/data"
+	local font_directory="$font_data_home/fonts/HackGen"
+
+	mkdir -p "$mock_bin" "$home_directory" "$font_directory"
+	: > "$font_directory/HackGenConsoleNF-Regular.ttf"
+	: > "$font_directory/HackGenConsoleNF-Bold.ttf"
+	: > "$mock_log"
+	write_mock_manager_installers "$mock_root" "$mock_bin"
+	write_mock_command "$mock_bin/apt-get" \
+		'printf "apt-get %s\\n" "$*" >> "$MOCK_LOG"'
+	write_mock_command "$mock_bin/sudo" \
+		'printf "sudo %s\\n" "$*" >> "$MOCK_LOG"' \
+		'exec "$@"'
+
+	if env NO_COLOR=1 HOME="$home_directory" XDG_DATA_HOME="$font_data_home" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" MOCK_MANAGER_SCRIPT_DIR="$mock_root/manager-installers" MOCK_PROTO_INSTALL_FAIL=1 "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+		fail_test 'report a nonzero proto installation failure'
+		return 1
+	fi
+
+	assert_contains '[❌️ERROR] Failed to install proto' "$output_file" 'name the manager installation failure' || return 1
+	assert_command_logged 'proto-installer' "$mock_log" 'run the proto installer before reporting failure' || return 1
+	assert_command_not_logged 'mise-installer' "$mock_log" 'stop before attempting mise after proto installation fails' || return 1
+	[[ ! -e "$home_directory/.bashrc" ]] || fail_test 'do not update PATH after manager installation failure' || return 1
+}
+
+test_mise_installation_failure() {
+	local mock_root="$TEST_ROOT/mise-installation-failure"
+	local mock_bin="$mock_root/bin"
+	local mock_log="$mock_root/commands.log"
+	local output_file="$mock_root/output.log"
+	local home_directory="$mock_root/home"
+	local font_data_home="$mock_root/data"
+	local font_directory="$font_data_home/fonts/HackGen"
+
+	mkdir -p "$mock_bin" "$home_directory" "$font_directory"
+	: > "$font_directory/HackGenConsoleNF-Regular.ttf"
+	: > "$font_directory/HackGenConsoleNF-Bold.ttf"
+	: > "$mock_log"
+	write_mock_manager_installers "$mock_root" "$mock_bin"
+	write_mock_command "$mock_bin/apt-get" \
+		'printf "apt-get %s\\n" "$*" >> "$MOCK_LOG"'
+	write_mock_command "$mock_bin/sudo" \
+		'printf "sudo %s\\n" "$*" >> "$MOCK_LOG"' \
+		'exec "$@"'
+
+	if env NO_COLOR=1 HOME="$home_directory" XDG_DATA_HOME="$font_data_home" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" MOCK_MANAGER_SCRIPT_DIR="$mock_root/manager-installers" MOCK_MISE_INSTALL_FAIL=1 "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+		fail_test 'report a nonzero mise installation failure'
+		return 1
+	fi
+
+	assert_contains '[❌️ERROR] Failed to install mise' "$output_file" 'name the mise installation failure' || return 1
+	assert_command_logged 'proto-installer' "$mock_log" 'install proto before attempting mise' || return 1
+	assert_command_logged 'mise-installer' "$mock_log" 'run the mise installer before reporting failure' || return 1
+	[[ ! -e "$home_directory/.bashrc" ]] || fail_test 'do not update PATH after a manager installation failure' || return 1
+}
+
+test_manager_path_failure() {
+	local mock_root="$TEST_ROOT/manager-path-failure"
+	local mock_bin="$mock_root/bin"
+	local mock_log="$mock_root/commands.log"
+	local output_file="$mock_root/output.log"
+	local home_directory="$mock_root/home"
+	local font_data_home="$mock_root/data"
+	local font_directory="$font_data_home/fonts/HackGen"
+
+	mkdir -p "$mock_bin" "$home_directory/.bashrc" "$font_directory"
+	: > "$font_directory/HackGenConsoleNF-Regular.ttf"
+	: > "$font_directory/HackGenConsoleNF-Bold.ttf"
+	: > "$mock_log"
+	write_mock_manager_installers "$mock_root" "$mock_bin"
+	write_mock_command "$mock_bin/apt-get" \
+		'printf "apt-get %s\\n" "$*" >> "$MOCK_LOG"'
+	write_mock_command "$mock_bin/sudo" \
+		'printf "sudo %s\\n" "$*" >> "$MOCK_LOG"' \
+		'exec "$@"'
+
+	if env NO_COLOR=1 HOME="$home_directory" XDG_DATA_HOME="$font_data_home" PATH="$mock_bin:/usr/bin:/bin" MOCK_LOG="$mock_log" MOCK_MANAGER_SCRIPT_DIR="$mock_root/manager-installers" "$FIRST_SETUP_PATH" > "$output_file" 2>&1; then
+		fail_test 'report a manager PATH profile update failure'
+		return 1
+	fi
+
+	assert_contains '[❌️ERROR] The user .bashrc path is a directory' "$output_file" 'explain why manager PATH could not be updated' || return 1
+	assert_not_contains 'Development tool managers are ready' "$output_file" 'do not report success after a PATH profile failure' || return 1
+	[[ -d "$home_directory/.bashrc" ]] || fail_test 'preserve the conflicting .bashrc directory' || return 1
+}
+
 test_hackgen_installation() {
 	local mock_root="$TEST_ROOT/hackgen-installation"
 	local mock_bin="$mock_root/bin"
 	local mock_log="$mock_root/commands.log"
 	local output_file="$mock_root/output.log"
 	local error_output="$mock_root/error.log"
+	local home_directory="$mock_root/home"
 	local font_data_home="$mock_root/data"
 	local font_directory="$font_data_home/fonts/HackGen"
 	local regular_font="$font_directory/HackGenConsoleNF-Regular.ttf"
 	local bold_font="$font_directory/HackGenConsoleNF-Bold.ttf"
 	local regular_mode=""
 
-	mkdir -p "$mock_bin"
+	mkdir -p "$mock_bin" "$home_directory"
+	write_fake_installed_managers "$home_directory"
 	: > "$mock_log"
 	write_mock_command "$mock_bin/apt-get" \
 		'printf "apt-get %s\\n" "$*" >> "$MOCK_LOG"'
@@ -199,6 +380,8 @@ test_hackgen_installation() {
 	regular_mode="$(stat -c '%a' "$regular_font")"
 	[[ "$regular_mode" == '644' ]] || fail_test 'install the regular font with mode 0644' || return 1
 	assert_command_logged 'curl' "$mock_log" 'retrieve release metadata and archive' || return 1
+	assert_not_contains 'moonrepo.dev/install/proto.sh' "$mock_log" 'skip reinstalling an existing proto manager' || return 1
+	assert_not_contains 'mise.run' "$mock_log" 'skip reinstalling an existing mise manager' || return 1
 	assert_command_logged 'jq' "$mock_log" 'select the release asset with jq' || return 1
 	assert_command_logged 'unzip' "$mock_log" 'inspect the archive contents' || return 1
 	assert_command_logged 'fc-cache' "$mock_log" 'refresh the font cache after installation' || return 1
@@ -258,6 +441,10 @@ PATH="$ORIGINAL_PATH"
 export PATH
 
 run_test 'apt commands' test_apt_commands
+run_test 'root execution rejection' test_root_rejection
+run_test 'manager installation failure' test_manager_installation_failure
+run_test 'mise installation failure' test_mise_installation_failure
+run_test 'manager PATH update failure' test_manager_path_failure
 run_test 'HackGen installation' test_hackgen_installation
 
 printf '%s\n' "Passed $PASS_COUNT focused first-setup tests."

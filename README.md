@@ -10,7 +10,15 @@
 curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.sh | bash
 ```
 
-通常ユーザーで実行してください。`sudo` を使うのは apt の操作だけで、HackGen フォントはユーザー単位で導入します。旧版で配置された `.dev/first-setup.sh` は自動で削除・更新しません。不要な場合は手動で削除してください。
+通常ユーザーで実行してください。`sudo` を使うのは apt の操作だけです。proto と mise は未導入の場合だけユーザー単位で導入し、HackGen フォントもユーザー単位で導入します。proto/mise のactivation hookや言語ランタイム、plugin、その他の開発ツールは導入しません。managerの実行ファイルが標準導入先にある場合だけ、そのPATHを `~/.bashrc` に追加します。
+
+現在の対話shellでmanager commandを使う場合は、sourceするか新しいshellを開いてください。これは対話shellのPATHを更新するための案内で、`.dev/dev-tools.sh` のmanager検出には必須ではありません。
+
+```bash
+source ~/.bashrc
+```
+
+旧版で配置された `.dev/first-setup.sh` は自動で削除・更新しません。不要な場合は手動で削除してください。
 
 ## Install
 
