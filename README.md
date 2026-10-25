@@ -18,6 +18,19 @@ curl -fsSL https://raw.githubusercontent.com/mkgask/mydevsetup/main/first-setup.
 source ~/.bashrc
 ```
 
+### VS Code font
+
+VS CodeでHackGen Console NFを使う場合は、`settings.json`でフォントファミリーを指定します。
+
+```json
+{
+  "editor.fontFamily": "'HackGen Console NF', Consolas, 'Courier New', monospace",
+  "terminal.integrated.fontFamily": "HackGen Console NF"
+}
+```
+
+VS CodeのUIがWindowsで動作し、WSLへ接続している場合は、Windows側にもフォントをインストールしてください。
+
 旧版で配置された `.dev/first-setup.sh` は自動で削除・更新しません。不要な場合は手動で削除してください。
 
 ## Install
