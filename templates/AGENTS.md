@@ -12,8 +12,8 @@
 # Index
 
 - Read each document only when necessary.
-- Whenever you create a new document, be sure to add it here.
-- You do not need to add Japanese documentation.
+- Whenever you create a new document, be sure to add it to the relevant index.
+- Japanese-language documents do not need separate entries in this index.
 - You do not need to make any changes to AGENTS.md other than adding or removing documentation.
 
 
@@ -25,10 +25,6 @@
 ## All DECISIONS for this repository
 
 [DECISIONS.yml](DECISIONS.yml)
-
-## records history for this repository
-
-[records/](records/)
 
 
 
