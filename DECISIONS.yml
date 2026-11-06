@@ -660,3 +660,20 @@ decisions:
             既存ペアのリリースタグ比較、旧版削除、無引数再実行時の自動アップデート、Windows側フォント登録、VS Code設定変更は行わない。
           status: "✅️Implementation Approved"
           sub_decisions: []
+
+  documentation:
+    - id: docs-001-records-index
+      decision: >
+        records/index.md は index.md 自身を除く records/ 内の全記録文書をカテゴリ別に一度ずつ列挙する唯一の目次とし、
+        記録文書の追加・削除時に更新する。リポジトリルートの AGENTS.md だけにこの目次への短いリンクを置く。
+        records/ を配布しないため、templates/AGENTS.md とその日本語ミラーにはこのリポジトリ固有の目次リンクを置かない。
+        日本語版の記録は AGENTS.md の索引に別項目として列挙しない。
+      status: "✅️Implementation Approved"
+      link: "records/docs-001-records-index.md"
+      sub_decisions:
+        - id: docs-001-1-new-document-indexing-guidance
+          decision: >
+            AGENTS.md と templates/AGENTS.md には、新しい文書を該当する目次に追加する簡潔な指示を残す。
+            この指示は個別の記録一覧を AGENTS.md に追加することを意味しない。
+          status: "✅️Implementation Approved"
+          sub_decisions: []
