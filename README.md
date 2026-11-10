@@ -84,3 +84,23 @@ bash .dev/dev-tools.sh init --agent cursor
 以下のパッケージマネージャーがインストールされていれば、利用可能な導入経路として考慮します: `apt-get`、`dnf`、`yum`、`pacman`、`zypper`、`apk`、`nix`、`proto`、`mise`、`asdf`、`brew`
 
 `install` で新たに `proto` または `mise` 経由の導入に成功した場合は、現在のシェルを有効化し、次回以降の Bash でも利用できるように必要な manager 設定と `~/.bashrc` の activation 行を冪等に更新します。既存ツール、`status`、`init`、`install --dry-run` はこの設定を変更しません。
+
+## Project language setup
+
+プロジェクト用言語ツールのセットアップには `.dev/language-tools.sh` を使います。`install.sh` はこのスクリプトを配置しますが、自動実行はしません。引数なしで Usage と利用可能なツールを確認できます。
+
+`shell` を指定すると ShellCheck v0.11.0 をセットアップします。公式リリースがある OS / architecture では `.dev/bin/shellcheck` にプロジェクトローカルで配置します。公式リリースがない場合に限り、利用可能な OS package manager でグローバルに導入します。公式リリースのダウンロードに失敗した場合はエラーで終了し、グローバル導入には切り替えません。
+
+```bash
+bash .dev/language-tools.sh shell
+
+# プロジェクトローカルに導入された場合
+.dev/bin/shellcheck path/to/script.sh
+
+# グローバル導入にフォールバックした場合
+shellcheck path/to/script.sh
+```
+
+セットアップ成功時は AGENTS.md の管理ブロックへ ShellCheck の利用案内と実際の実行 command を登録します。AGENTS.md を安全に更新できない場合はエラーとなりますが、導入済みの ShellCheck は取り消しません。
+
+スクリプトは ShellCheck の実行や PATH / shell 設定の変更を行いません。`shell` 以外の未対応ツールを指定した場合は、Usage とエラーを表示して終了します。共有開発ツールの導入や AI 向けプロジェクト初期化は `.dev/dev-tools.sh install` / `init` が扱います。

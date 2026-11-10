@@ -19,7 +19,14 @@ decisions:
         curl -fsSL ... | bash 実行可能な標準汎用インストーラーを提供する。
       status: "✅️Implementation Approved"
       link: "records/installer-001-ai-dev-setup.md"
-      sub_decisions: []
+      sub_decisions:
+        - id: installer-001-1-project-language-tool-helper
+          decision: >
+            install.sh は独立したプロジェクト用言語セットアップ補助スクリプトをdev-tools.shと同じ選択先
+            （既定は `.dev`）へ配布アセットとして配置するが、install.sh からは実行しない。利用者が明示的に手動実行する。
+          status: "✅️Implementation Approved"
+          link: "records/dev-tools-011-project-language-tool-setup.md"
+          sub_decisions: []
 
     - id: installer-002-templates-agents-md
       decision: >
@@ -60,10 +67,11 @@ decisions:
             ルート README.md は、本リポジトリが自分で作って自分で使うためのものであることと、
             対象プロジェクトのルートで実行する一般利用者向けの raw GitHub install.sh 導入方法と、
             導入後に `.dev/dev-tools.sh` で使う基本操作例、現在の導入対象ツール一覧、
-            利用可能な package manager を導入経路として考慮する旨だけを最小限記載する。
+            利用可能な package manager を導入経路として考慮する旨、およびプロジェクト言語セットアップ補助スクリプトの
+            手動実行例と対象範囲を最小限記載する。
             ローカル checkout、開発・検証手順、内部実装の説明は記載しない。
           status: "✅️Implementation Approved"
-          link: "records/dev-tools-009-node-tool-installation.md"
+          link: "records/dev-tools-011-project-language-tool-setup.md"
           sub_decisions: []
 
     - id: installer-004-supported-targets
@@ -500,6 +508,41 @@ decisions:
             それ以外の配布アセット（AGENTS.md、PRINCIPLES.md）の permission は変更せず、root の `first-setup.sh` は配布・自動実行しない。shell起動ファイル・PATH変更、DODKitとhelperの処理順序も変更しない。
           status: "✅️Implementation Approved"
           link: "records/first-setup-005-bootstrap-distribution.md"
+          sub_decisions: []
+
+    - id: installer-011-26-project-language-tool-setup
+      decision: >
+        プロジェクト用言語セットアップは `dev-tools.sh install` / `init` とは独立したスクリプトで扱う。
+        引数で明示指定されたツールだけを対象に、ツールの導入・設定と、プロジェクトに宣言された言語・package依存の導入を行う。
+        OS packageは対象外とし、first-setupのOS bootstrap境界を維持する。ただし、tool-specific sub-decisionが明示的に許可する場合に限り、プロジェクト内導入手段がないツールのグローバル導入fallbackを認める。
+        完了条件は対象に必要な導入・設定コマンドの成功までとし、別途の起動確認やプロジェクト全体のtest/build実行は要求しない。
+        CLIは1つ以上のツール引数を複数受け付け、引数なしではUsageのみを表示してセットアップを実行しない。
+        対応言語・ツール、依存manifest、runtime/package manager、具体的なセットアップcommandは本決定では固定しない。
+      status: "⚠️Implementing"
+      link: "records/dev-tools-011-project-language-tool-setup.md"
+      sub_decisions:
+        - id: installer-011-26-1-shellcheck-installation
+          decision: >
+            `language-tools.sh shell` はShellCheck v0.11.0を、公式prebuilt releaseがあるLinux
+            （x86_64、aarch64、armv6hf、riscv64）/macOS（x86_64、aarch64）ではhelperの隣の
+            `bin/shellcheck` へプロジェクト内導入する。対象platformに公式local assetがない場合に限り、
+            ShellCheckのみ `apt-get`、`dnf`、`yum`、`pacman`、`zypper`、`apk`、`nix`、`brew` の利用可能なmanagerで
+            global fallbackを許可する。local download/extractionの失敗をglobal fallbackで隠さない。
+            PATH・shell profile変更、`.shellcheckrc` 作成、project sourceへの自動lintは行わず、未対応引数は副作用前に失敗させる。
+          status: "✅️Implementation Approved"
+          link: "records/dev-tools-012-shellcheck-project-tool-setup.md"
+          sub_decisions: []
+
+        - id: installer-011-26-2-shellcheck-agents-guidance
+          decision: >
+            `language-tools.sh shell` でShellCheckをlocal install/reuseまたはglobal installできたとき、
+            `DEV_TOOLS_AGENTS_PATH`（未設定時は `AGENTS.md`）のMYDEVSETUP DEV TOOLS管理blockへ、
+            ShellCheckをshell script lintに使えることと、その環境で実際に使うcommandを冪等に追加または更新する。
+            管理blockがない場合は作成し、既存block外のuser contentは変更しない。AGENTS.mdが安全に更新できない、
+            または管理markerが不正な場合は明示的に失敗し、インストール済みShellCheckはrollbackしない。
+            ShellCheck setup自体が失敗した場合はAGENTS.mdを変更しない。ShellCheckの自動実行とPATH/profile変更は行わない。
+          status: "✅️Implementation Approved"
+          link: "records/dev-tools-013-shellcheck-agents-guidance.md"
           sub_decisions: []
 
   first-setup:

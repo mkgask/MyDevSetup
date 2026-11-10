@@ -15,6 +15,9 @@
 - [dev-tools-008-installed-agents-sync](dev-tools-008-installed-agents-sync.md): Installed AGENTS sync
 - [dev-tools-009-node-tool-installation](dev-tools-009-node-tool-installation.md): Node.js tool installation
 - [dev-tools-010-proto-priority-and-dynamic-capability](dev-tools-010-proto-priority-and-dynamic-capability.md): Proto priority and dynamic capability
+- [dev-tools-011-project-language-tool-setup](dev-tools-011-project-language-tool-setup.md): Project-specific language tool setup
+- [dev-tools-012-shellcheck-project-tool-setup](dev-tools-012-shellcheck-project-tool-setup.md): Project-local ShellCheck setup
+- [dev-tools-013-shellcheck-agents-guidance](dev-tools-013-shellcheck-agents-guidance.md): ShellCheck agent guidance
 
 ## First setup
 - [first-setup-001-generic-dependencies](first-setup-001-generic-dependencies.md): Generic dependencies

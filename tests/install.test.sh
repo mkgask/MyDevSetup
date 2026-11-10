@@ -168,6 +168,7 @@ prepare_fixture() {
 	cp "$PROJECT_DIRECTORY/install.sh" "$SOURCE_ROOT/install.sh"
 	cp "$PROJECT_DIRECTORY/templates/AGENTS.md" "$SOURCE_ROOT/templates/AGENTS.md"
 	cp "$PROJECT_DIRECTORY/templates/dev-tools.sh" "$SOURCE_ROOT/templates/dev-tools.sh"
+	cp "$PROJECT_DIRECTORY/templates/language-tools.sh" "$SOURCE_ROOT/templates/language-tools.sh"
 	cp "$PROJECT_DIRECTORY/templates/.docs/PRINCIPLES.md" "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md"
 
 	: > "$DODKIT_LOG"
@@ -204,17 +205,38 @@ run_installer_noninteractive() {
 test_default_helper_deployment_and_dodkit_order() {
 	local dodkit_line=0
 	local helper_line=0
+	local language_tools_usage=""
+	local language_tools_output=""
+	local language_tools_status=0
 
 	run_installer_noninteractive default-deployment copilot --custom-flag value
 
 	[[ -f "$TARGET_ROOT/AGENTS.md" ]] || fail_test 'AGENTS.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md was not deployed' || return 1
 	[[ -f "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper was not deployed' || return 1
+	[[ -f "$TARGET_ROOT/.dev/language-tools.sh" ]] || fail_test 'project language helper was not deployed' || return 1
 	[[ ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup bootstrap should not be deployed to the project' || return 1
 	[[ -x "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'deployed dev-tools helper should be executable' || return 1
 	[[ ! -x "$TARGET_ROOT/AGENTS.md" ]] || fail_test 'AGENTS.md should remain non-executable' || return 1
 	[[ ! -x "$TARGET_ROOT/.docs/PRINCIPLES.md" ]] || fail_test 'PRINCIPLES.md should remain non-executable' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
+	cmp -s "$SOURCE_ROOT/templates/language-tools.sh" "$TARGET_ROOT/.dev/language-tools.sh" || fail_test 'project language helper content differs from its template' || return 1
+	assert_not_contains 'Usage:' "$OUTPUT_LOG" 'install.sh should deploy but not execute the project language helper' || return 1
+
+	if ! language_tools_usage="$(bash "$TARGET_ROOT/.dev/language-tools.sh" 2>&1)"; then
+		fail_test 'project language helper should show Usage successfully when no tools are selected'
+		return 1
+	fi
+	[[ "$language_tools_usage" == $'Usage:\n\tlanguage-tools.sh <tool> [tool ...]\n\nAvailable tools:\n\tshell (ShellCheck)' ]] || fail_test 'no-argument invocation should print only Usage' || return 1
+
+	if language_tools_output="$(bash "$TARGET_ROOT/.dev/language-tools.sh" python node 2>&1)"; then
+		language_tools_status=0
+	else
+		language_tools_status="$?"
+	fi
+	[[ "$language_tools_status" -eq 1 ]] || fail_test 'unsupported tools should fail explicitly' || return 1
+	[[ "$language_tools_output" == *'Usage:'* ]] || fail_test 'argument invocation should show Usage' || return 1
+	[[ "$language_tools_output" == *'Unsupported tool: python'* ]] || fail_test 'argument invocation should reject unsupported tools explicitly' || return 1
 
 	assert_contains 'copilot' "$DODKIT_LOG" 'forward DODKit target argument' || return 1
 	assert_contains '--custom-flag' "$DODKIT_LOG" 'forward DODKit custom argument' || return 1
@@ -289,6 +311,7 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 	local existing_agents='# user-owned AGENTS.md'
 	local existing_principles='# user-owned PRINCIPLES.md'
 	local existing_helper='# stale helper'
+	local existing_language_tools='# stale language tools helper'
 	local existing_first_setup='# stale first-setup'
 
 	prepare_fixture protected-assets
@@ -296,6 +319,7 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 	printf '%s\n' "$existing_agents" > "$TARGET_ROOT/AGENTS.md"
 	printf '%s\n' "$existing_principles" > "$TARGET_ROOT/.docs/PRINCIPLES.md"
 	printf '%s\n' "$existing_helper" > "$TARGET_ROOT/.dev/dev-tools.sh"
+	printf '%s\n' "$existing_language_tools" > "$TARGET_ROOT/.dev/language-tools.sh"
 	printf '%s\n' "$existing_first_setup" > "$TARGET_ROOT/.dev/first-setup.sh"
 
 	(
@@ -311,6 +335,7 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 	assert_contains '- `codegraph`: `codegraph` - Maps code to tests, breakage, affected flows, and business-logic risk.' "$TARGET_ROOT/AGENTS.md" 'record existing CodeGraph installation in AGENTS.md' || return 1
 	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'default ask policy should update PRINCIPLES.md without a TTY' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh"
+	cmp -s "$SOURCE_ROOT/templates/language-tools.sh" "$TARGET_ROOT/.dev/language-tools.sh" || fail_test 'default ask policy should update the project language helper without a TTY' || return 1
 	assert_contains "$existing_first_setup" "$TARGET_ROOT/.dev/first-setup.sh" 'leave an existing first-setup copy unchanged' || return 1
 	assert_contains 'using default helper directory: .dev' "$OUTPUT_LOG" 'use default destination without a TTY' || return 1
 }
@@ -318,6 +343,7 @@ test_existing_assets_updated_by_default_and_helper_overwritten() {
 test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 	local existing_agents='# user-owned AGENTS.md'
 	local existing_principles='# user-owned PRINCIPLES.md'
+	local existing_language_tools='# user-owned language tools helper'
 	local existing_first_setup='# stale first-setup'
 
 	prepare_fixture overwrite-no
@@ -325,6 +351,7 @@ test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 	printf '%s\n' "$existing_agents" > "$TARGET_ROOT/AGENTS.md"
 	printf '%s\n' "$existing_principles" > "$TARGET_ROOT/.docs/PRINCIPLES.md"
 	printf '%s\n' '# stale helper' > "$TARGET_ROOT/.dev/dev-tools.sh"
+	printf '%s\n' "$existing_language_tools" > "$TARGET_ROOT/.dev/language-tools.sh"
 	printf '%s\n' "$existing_first_setup" > "$TARGET_ROOT/.dev/first-setup.sh"
 
 	(
@@ -335,6 +362,7 @@ test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 	assert_contains "$existing_agents" "$TARGET_ROOT/AGENTS.md" 'overwrite=no should preserve AGENTS.md' || return 1
 	assert_contains "$existing_principles" "$TARGET_ROOT/.docs/PRINCIPLES.md" 'overwrite=no should preserve PRINCIPLES.md' || return 1
 	cmp -s "$SOURCE_ROOT/templates/dev-tools.sh" "$TARGET_ROOT/.dev/dev-tools.sh" || fail_test 'overwrite=no should not suppress unconditional helper updates' || return 1
+	assert_contains "$existing_language_tools" "$TARGET_ROOT/.dev/language-tools.sh" 'overwrite=no should preserve the project language helper' || return 1
 	assert_contains "$existing_first_setup" "$TARGET_ROOT/.dev/first-setup.sh" 'overwrite=no should leave an existing first-setup copy unchanged' || return 1
 	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
 	assert_contains 'no' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
@@ -342,9 +370,10 @@ test_overwrite_no_preserves_local_assets_and_forwards_policy() {
 
 test_overwrite_yes_updates_local_assets_and_forwards_policy() {
 	prepare_fixture overwrite-yes
-	mkdir -p "$TARGET_ROOT/.docs"
+	mkdir -p "$TARGET_ROOT/.docs" "$TARGET_ROOT/.dev"
 	printf '%s\n' '# stale AGENTS.md' > "$TARGET_ROOT/AGENTS.md"
 	printf '%s\n' '# stale PRINCIPLES.md' > "$TARGET_ROOT/.docs/PRINCIPLES.md"
+	printf '%s\n' '# stale language tools helper' > "$TARGET_ROOT/.dev/language-tools.sh"
 
 	(
 		cd "$TARGET_ROOT"
@@ -355,6 +384,7 @@ test_overwrite_yes_updates_local_assets_and_forwards_policy() {
 	assert_contains '- `python`: `python3`' "$TARGET_ROOT/AGENTS.md" 'overwrite=yes should record existing Python installation' || return 1
 	assert_contains '- `ruby`: `ruby`' "$TARGET_ROOT/AGENTS.md" 'overwrite=yes should record existing Ruby installation' || return 1
 	cmp -s "$SOURCE_ROOT/templates/.docs/PRINCIPLES.md" "$TARGET_ROOT/.docs/PRINCIPLES.md" || fail_test 'overwrite=yes should update PRINCIPLES.md' || return 1
+	cmp -s "$SOURCE_ROOT/templates/language-tools.sh" "$TARGET_ROOT/.dev/language-tools.sh" || fail_test 'overwrite=yes should update the project language helper' || return 1
 	assert_contains '--overwrite' "$DODKIT_LOG" 'forward overwrite option to DODKit' || return 1
 	assert_contains 'yes' "$DODKIT_LOG" 'forward overwrite policy value to DODKit' || return 1
 }
@@ -384,7 +414,9 @@ test_existing_dev_directory_destination_prompt() {
 
 	[[ -f "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected helper destination was not used' || return 1
 	[[ -x "$TARGET_ROOT/.custom-tools/dev-tools.sh" ]] || fail_test 'selected dev-tools helper should be executable' || return 1
+	[[ -f "$TARGET_ROOT/.custom-tools/language-tools.sh" ]] || fail_test 'selected helper destination should also be used for the project language helper' || return 1
 	[[ ! -e "$TARGET_ROOT/.dev/dev-tools.sh" ]] || fail_test 'default helper destination was used despite selection' || return 1
+	[[ ! -e "$TARGET_ROOT/.dev/language-tools.sh" ]] || fail_test 'default destination should not receive the project language helper after a custom selection' || return 1
 	[[ ! -e "$TARGET_ROOT/.custom-tools/first-setup.sh" && ! -e "$TARGET_ROOT/.dev/first-setup.sh" ]] || fail_test 'first-setup bootstrap should not be deployed to either helper directory' || return 1
 }
 
