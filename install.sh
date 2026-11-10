@@ -16,11 +16,14 @@ DODKIT_INSTALLER_URL="https://raw.githubusercontent.com/mkgask/dodkit/main/insta
 DEV_TOOLS_SOURCE_TEMPLATE_PATH="templates/dev-tools.sh"
 DEV_TOOLS_DEFAULT_DIRECTORY=".dev"
 DEV_TOOLS_HELPER_PATH=""
+LANGUAGE_TOOLS_SOURCE_TEMPLATE_PATH="templates/language-tools.sh"
+LANGUAGE_TOOLS_HELPER_PATH=""
 
 DEPLOYMENT_ASSET_SPECS=(
 	"templates/AGENTS.md|AGENTS.md|AGENTS.md"
 	"templates/.docs/PRINCIPLES.md|.docs/PRINCIPLES.md|PRINCIPLES.md"
 	"templates/dev-tools.sh|.dev/dev-tools.sh|dev-tools.sh"
+	"$LANGUAGE_TOOLS_SOURCE_TEMPLATE_PATH|.dev/language-tools.sh|language-tools.sh"
 )
 
 print_usage() {
@@ -29,7 +32,8 @@ Usage:
 	install.sh [arguments-for-dodkit]
 
 Description:
-	Install MyDevSetup assets, deploy the optional development-tools helper, and then run DODKit.
+	Install MyDevSetup assets, deploy the optional development-tools and project-language helpers, and then run DODKit.
+	The project-language helper is deployed for manual use and is not run automatically.
 	Arguments are forwarded to DODKit as-is.
 
 Examples:
@@ -352,7 +356,7 @@ select_dev_tools_destination() {
 
 	if [[ -d "$DEV_TOOLS_DEFAULT_DIRECTORY" ]]; then
 		if has_tty; then
-			printf 'Directory for dev-tools.sh [default: %s]: ' "$DEV_TOOLS_DEFAULT_DIRECTORY" >/dev/tty
+			printf 'Directory for development-tool helpers [default: %s]: ' "$DEV_TOOLS_DEFAULT_DIRECTORY" >/dev/tty
 			read -r answer </dev/tty || answer=""
 			if [[ -n "$answer" ]]; then
 				destination_directory="$answer"
@@ -374,6 +378,8 @@ select_dev_tools_destination() {
 	mkdir -p "$destination_directory"
 	DEV_TOOLS_HELPER_PATH="$destination_path"
 	DEPLOYMENT_ASSET_SPECS[2]="$DEV_TOOLS_SOURCE_TEMPLATE_PATH|$DEV_TOOLS_HELPER_PATH|dev-tools.sh"
+	LANGUAGE_TOOLS_HELPER_PATH="$destination_directory/language-tools.sh"
+	DEPLOYMENT_ASSET_SPECS[3]="$LANGUAGE_TOOLS_SOURCE_TEMPLATE_PATH|$LANGUAGE_TOOLS_HELPER_PATH|language-tools.sh"
 }
 
 run_dev_tools_helper() {

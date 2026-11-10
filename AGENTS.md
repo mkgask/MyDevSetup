@@ -40,4 +40,5 @@
 - `serena`: `serena`
 - `python`: `python3`
 - `node`: `node`
+- `ShellCheck`: `templates/bin/shellcheck` - Use it to lint shell scripts when relevant.
 <!-- END MYDEVSETUP DEV TOOLS -->
