@@ -18,6 +18,9 @@
 - [dev-tools-011-project-language-tool-setup](dev-tools-011-project-language-tool-setup.md): Project-specific language tool setup
 - [dev-tools-012-shellcheck-project-tool-setup](dev-tools-012-shellcheck-project-tool-setup.md): Project-local ShellCheck setup
 - [dev-tools-013-shellcheck-agents-guidance](dev-tools-013-shellcheck-agents-guidance.md): ShellCheck agent guidance
+- [dev-tools-014-shellcheck-gitignore](dev-tools-014-shellcheck-gitignore.md): ShellCheck binary Git ignore
+- [dev-tools-015-shellcheck-ignore-location](dev-tools-015-shellcheck-ignore-location.md): ShellCheck ignore-file location
+- [dev-tools-016-shellcheck-helper-ignore-implementation](dev-tools-016-shellcheck-helper-ignore-implementation.md): ShellCheck helper-local ignore implementation
 
 ## First setup
 - [first-setup-001-generic-dependencies](first-setup-001-generic-dependencies.md): Generic dependencies

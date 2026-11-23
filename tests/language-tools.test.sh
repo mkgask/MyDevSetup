@@ -152,6 +152,7 @@ test_no_arguments_print_usage_only() {
 	output="$(run_helper)"
 	assert_equal $'Usage:\n\tlanguage-tools.sh <tool> [tool ...]\n\nAvailable tools:\n\tshell (ShellCheck)' "$output" 'no-argument invocation should print only Usage' || return 1
 	[[ ! -e "$HELPER_DIRECTORY/bin" ]] || fail_test 'Usage-only invocation should not create an installation directory' || return 1
+	[[ ! -e "$HELPER_DIRECTORY/.gitignore" ]] || fail_test 'Usage-only invocation should not change helper .gitignore' || return 1
 	assert_not_contains 'MYDEVSETUP DEV TOOLS' "$PROJECT_AGENTS_PATH" 'Usage-only invocation should not change AGENTS.md' || return 1
 }
 
@@ -173,6 +174,7 @@ test_unknown_arguments_fail_before_side_effects() {
 	assert_not_contains 'curl ' "$MOCK_LOG" 'unknown arguments should be rejected before downloading' || return 1
 	assert_not_contains 'apt-get ' "$MOCK_LOG" 'unknown arguments should be rejected before global installation' || return 1
 	[[ ! -e "$HELPER_DIRECTORY/bin" ]] || fail_test 'unknown arguments should not create an installation directory' || return 1
+	[[ ! -e "$HELPER_DIRECTORY/.gitignore" ]] || fail_test 'unknown arguments should not change helper .gitignore' || return 1
 	assert_not_contains 'MYDEVSETUP DEV TOOLS' "$PROJECT_AGENTS_PATH" 'unknown arguments should not change AGENTS.md' || return 1
 }
 
@@ -183,6 +185,10 @@ test_shell_installs_pinned_local_binary_and_reuses_it() {
 
 	prepare_fixture local-install
 	install_command_mocks Linux x86_64
+	if ! git -C "$PROJECT_ROOT" init --quiet; then
+		fail_test 'could not initialize a Git repository for ignore verification'
+		return 1
+	fi
 	shellcheck_path="$HELPER_DIRECTORY/bin/shellcheck"
 
 	if ! output="$(run_helper shell shell 2>&1)"; then
@@ -194,6 +200,13 @@ test_shell_installs_pinned_local_binary_and_reuses_it() {
 	[[ "$output" == *"$shellcheck_path"* ]] || fail_test 'install output should report the local binary path' || return 1
 	assert_contains 'shellcheck-v0.11.0.linux.x86_64.tar.gz' "$MOCK_LOG" 'local install should fetch the pinned official Linux release' || return 1
 	assert_not_contains 'apt-get ' "$MOCK_LOG" 'local install should not use the global fallback' || return 1
+	assert_contains 'bin/' "$HELPER_DIRECTORY/.gitignore" 'local install should ignore the helper-local binary directory' || return 1
+	assert_equal 1 "$(grep -Fxc -- 'bin/' "$HELPER_DIRECTORY/.gitignore")" 'local install should add one helper ignore entry' || return 1
+	if ! git -C "$PROJECT_ROOT" check-ignore -q -- .dev/bin/shellcheck; then
+		fail_test 'Git should ignore the ShellCheck binary using the helper-local .gitignore'
+		return 1
+	fi
+	[[ ! -e "$PROJECT_ROOT/.gitignore" ]] || fail_test 'local install should not change the project-root .gitignore' || return 1
 	assert_contains '# Project guidance' "$PROJECT_AGENTS_PATH" 'local install should preserve existing AGENTS.md content' || return 1
 	assert_contains '- `ShellCheck`: `.dev/bin/shellcheck` - Use it to lint shell scripts when relevant.' "$PROJECT_AGENTS_PATH" 'local install should document the project binary for agents' || return 1
 
@@ -207,6 +220,25 @@ test_shell_installs_pinned_local_binary_and_reuses_it() {
 	curl_count="$(grep -c '^curl ' "$MOCK_LOG" || true)"
 	assert_equal 1 "$curl_count" 'a matching local ShellCheck should not be downloaded again' || return 1
 	assert_equal 1 "$(grep -Fxc -- '- `ShellCheck`: `.dev/bin/shellcheck` - Use it to lint shell scripts when relevant.' "$PROJECT_AGENTS_PATH")" 'repeated setup should keep one ShellCheck AGENTS entry' || return 1
+	assert_equal 1 "$(grep -Fxc -- 'bin/' "$HELPER_DIRECTORY/.gitignore")" 'repeated setup should keep one helper ignore entry' || return 1
+}
+
+test_existing_helper_gitignore_is_preserved_when_local_path_is_added() {
+	prepare_fixture existing-gitignore
+	install_command_mocks Linux x86_64
+	printf '%s\n' '# Existing helper ignores' > "$HELPER_DIRECTORY/.gitignore"
+	printf '%s' 'cache/' >> "$HELPER_DIRECTORY/.gitignore"
+
+	if ! run_helper shell > "$OUTPUT_LOG" 2>&1; then
+		fail_test 'local installation should update an existing helper .gitignore'
+		return 1
+	fi
+
+	assert_contains '# Existing helper ignores' "$HELPER_DIRECTORY/.gitignore" 'ignore update should preserve existing comments' || return 1
+	assert_contains 'cache/' "$HELPER_DIRECTORY/.gitignore" 'ignore update should preserve existing entries' || return 1
+	assert_contains 'bin/' "$HELPER_DIRECTORY/.gitignore" 'ignore update should add the helper-local binary directory' || return 1
+	assert_equal 1 "$(grep -Fxc -- 'bin/' "$HELPER_DIRECTORY/.gitignore")" 'existing helper .gitignore should contain one ShellCheck entry' || return 1
+	[[ ! -e "$PROJECT_ROOT/.gitignore" ]] || fail_test 'helper ignore update should not create a project-root .gitignore' || return 1
 }
 
 test_existing_managed_block_is_updated_without_touching_user_content() {
@@ -274,6 +306,8 @@ test_custom_helper_path_is_recorded_for_local_install() {
 	fi
 
 	[[ -x "$shellcheck_path" ]] || fail_test 'custom helper directory should contain the local ShellCheck binary' || return 1
+	assert_contains 'bin/' "$HELPER_DIRECTORY/.gitignore" 'custom helper should get a local bin ignore rule' || return 1
+	[[ ! -e "$PROJECT_ROOT/.gitignore" ]] || fail_test 'custom helper setup should not change the project-root .gitignore' || return 1
 	if ! grep -Fq -- '- `ShellCheck`: `.custom\ tools/bin/shellcheck` - Use it to lint shell scripts when relevant.' "$PROJECT_AGENTS_PATH"; then
 		fail_test "AGENTS.md should record the escaped custom local path: $(<"$PROJECT_AGENTS_PATH")"
 		return 1
@@ -304,6 +338,7 @@ test_unsupported_local_architecture_uses_global_package_manager() {
 	assert_contains 'apt-get install -y shellcheck' "$MOCK_LOG" 'global fallback should install ShellCheck with the available system manager' || return 1
 	assert_not_contains 'curl ' "$MOCK_LOG" 'global fallback should not download an unsupported local release' || return 1
 	assert_contains '- `ShellCheck`: `shellcheck` - Use it to lint shell scripts when relevant.' "$PROJECT_AGENTS_PATH" 'global installation should document its command for agents' || return 1
+	[[ ! -e "$HELPER_DIRECTORY/.gitignore" ]] || fail_test 'global fallback should not create a helper-local ignore entry' || return 1
 }
 
 test_local_download_failure_does_not_fall_back_globally() {
@@ -325,6 +360,50 @@ test_local_download_failure_does_not_fall_back_globally() {
 	assert_contains 'curl ' "$MOCK_LOG" 'local installation should attempt the official release download' || return 1
 	assert_not_contains 'apt-get ' "$MOCK_LOG" 'local download failure must not trigger global fallback' || return 1
 	cmp -s "$agents_snapshot" "$PROJECT_AGENTS_PATH" || fail_test 'failed ShellCheck setup should not change AGENTS.md' || return 1
+	[[ ! -e "$HELPER_DIRECTORY/.gitignore" ]] || fail_test 'failed local setup should not change helper .gitignore' || return 1
+}
+
+test_gitignore_update_failure_is_explicit_after_install() {
+	local status=0
+	local shellcheck_path=""
+	local external_gitignore=""
+
+	prepare_fixture invalid-gitignore
+	install_command_mocks Linux x86_64
+	shellcheck_path="$HELPER_DIRECTORY/bin/shellcheck"
+	external_gitignore="$FIXTURE_ROOT/external.gitignore"
+	printf '%s\n' '# Preserve this file' > "$external_gitignore"
+	ln -s "$external_gitignore" "$HELPER_DIRECTORY/.gitignore"
+
+	if run_helper shell > "$OUTPUT_LOG" 2>&1; then
+		status=0
+	else
+		status="$?"
+	fi
+
+	[[ "$status" -eq 1 ]] || fail_test 'helper .gitignore update failure should fail the setup command' || return 1
+	assert_contains 'Cannot safely update helper .gitignore' "$OUTPUT_LOG" 'unsafe helper .gitignore target should be reported' || return 1
+	[[ -x "$shellcheck_path" ]] || fail_test 'successful ShellCheck installation should remain after helper .gitignore update failure' || return 1
+	assert_not_contains 'MYDEVSETUP DEV TOOLS' "$PROJECT_AGENTS_PATH" 'helper .gitignore failure should prevent the AGENTS.md update' || return 1
+	assert_equal '# Preserve this file' "$(<"$external_gitignore")" 'helper ignore update should not modify a symlink target' || return 1
+}
+
+test_helper_outside_project_root_does_not_create_gitignore() {
+	prepare_fixture external-helper
+	HELPER_DIRECTORY="$FIXTURE_ROOT/external-helper"
+	export HELPER_DIRECTORY
+	mkdir -p "$HELPER_DIRECTORY"
+	cp "$HELPER_TEMPLATE_PATH" "$HELPER_DIRECTORY/language-tools.sh"
+	install_command_mocks Linux x86_64
+
+	if ! run_helper shell > "$OUTPUT_LOG" 2>&1; then
+		fail_test 'local setup should work with a helper outside the project root'
+		return 1
+	fi
+
+	[[ -x "$HELPER_DIRECTORY/bin/shellcheck" ]] || fail_test 'external helper should receive the local ShellCheck binary' || return 1
+	[[ ! -e "$HELPER_DIRECTORY/.gitignore" ]] || fail_test 'external helper should not receive a project ignore file' || return 1
+	[[ ! -e "$PROJECT_ROOT/.gitignore" ]] || fail_test 'external helper setup should not change the project-root .gitignore' || return 1
 }
 
 test_global_package_manager_failure_is_reported() {
@@ -366,6 +445,7 @@ test_agents_update_failure_is_explicit_after_install() {
 	assert_contains 'Cannot update incomplete AGENTS.md managed block' "$OUTPUT_LOG" 'invalid managed block should be reported' || return 1
 	[[ -x "$shellcheck_path" ]] || fail_test 'successful ShellCheck installation should remain after AGENTS.md update failure' || return 1
 	assert_not_contains '- `ShellCheck`:' "$PROJECT_AGENTS_PATH" 'failed AGENTS.md update should not write a partial ShellCheck entry' || return 1
+	assert_contains 'bin/' "$HELPER_DIRECTORY/.gitignore" 'helper .gitignore update should precede the AGENTS.md update' || return 1
 }
 
 run_test() {
@@ -383,12 +463,15 @@ run_test() {
 run_test 'no arguments print Usage only' test_no_arguments_print_usage_only
 run_test 'unknown tools fail before side effects' test_unknown_arguments_fail_before_side_effects
 run_test 'shell installs and reuses pinned local binary' test_shell_installs_pinned_local_binary_and_reuses_it
+run_test 'existing helper .gitignore is preserved when the local path is added' test_existing_helper_gitignore_is_preserved_when_local_path_is_added
 run_test 'existing managed block is updated without touching user content' test_existing_managed_block_is_updated_without_touching_user_content
 run_test 'existing local binary updates custom AGENTS.md' test_existing_local_binary_updates_custom_agents_path
 run_test 'custom helper path is recorded for local install' test_custom_helper_path_is_recorded_for_local_install
 run_test 'Darwin arm selects local release' test_darwin_arm_uses_matching_local_asset
 run_test 'unsupported architecture uses global package manager' test_unsupported_local_architecture_uses_global_package_manager
 run_test 'local download failure does not use global fallback' test_local_download_failure_does_not_fall_back_globally
+run_test 'helper .gitignore update failure is explicit after installation' test_gitignore_update_failure_is_explicit_after_install
+run_test 'helper outside project root does not create an ignore file' test_helper_outside_project_root_does_not_create_gitignore
 run_test 'global package-manager failure is explicit' test_global_package_manager_failure_is_reported
 run_test 'AGENTS.md update failure is explicit after installation' test_agents_update_failure_is_explicit_after_install
 
