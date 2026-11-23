@@ -545,6 +545,18 @@ decisions:
           link: "records/dev-tools-013-shellcheck-agents-guidance.md"
           sub_decisions: []
 
+        - id: installer-011-26-3-shellcheck-gitignore
+          decision: >
+            `language-tools.sh shell` がShellCheckをhelper隣の `bin/shellcheck` にlocal install/reuseした場合、
+            project root内のhelper directoryにある `.gitignore` へ `bin/` を冪等に追加する。
+            `.gitignore` がない場合は作成し、既存内容とpermissionを保持する。symlink、非regular file、
+            読み書き不能など安全に更新できない場合は明示的に失敗し、導入済みbinaryはrollbackしない。
+            ignore更新はAGENTS.md guidanceより前に行う。local setup failure、global fallback、helperがproject root外にある場合は
+            ignore fileを変更しない。
+          status: "✅️Implementation Approved"
+          link: "records/dev-tools-015-shellcheck-ignore-location.md"
+          sub_decisions: []
+
   first-setup:
     - id: installer-011-22-first-setup-dependencies
       decision: >

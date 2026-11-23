@@ -58,6 +58,121 @@ local_shellcheck_command_path() {
 	esac
 }
 
+cleanup_gitignore_temporary_file() {
+	local temporary_file="$1"
+
+	if [[ -n "$temporary_file" ]] && [[ -e "$temporary_file" ]]; then
+		if ! rm -f -- "$temporary_file"; then
+			log_error "Could not remove temporary .gitignore file: $temporary_file"
+		fi
+	fi
+}
+
+update_shellcheck_gitignore() {
+	local helper_directory="$1"
+	local shellcheck_path="$2"
+	local ignore_entry="bin/"
+	local gitignore_path="$helper_directory/.gitignore"
+	local temporary_file=""
+	local required_command=""
+	local current_umask=""
+	local new_file_mode=""
+	local last_character=""
+	local grep_status=0
+
+	if [[ "$shellcheck_path" == /* ]]; then
+		log_info "ShellCheck helper is outside the project root; helper .gitignore was not changed"
+		return 0
+	fi
+
+	if [[ "$shellcheck_path" != */shellcheck ]]; then
+		log_error "Could not derive the helper-local ShellCheck binary directory for .gitignore"
+		return 1
+	fi
+
+	for required_command in chmod cp grep mv mktemp rm tail; do
+		if ! command -v "$required_command" >/dev/null 2>&1; then
+			log_error "Required command is unavailable for helper .gitignore update: $required_command"
+			return 1
+		fi
+	done
+
+	if [[ -L "$gitignore_path" ]]; then
+		log_error "Cannot safely update helper .gitignore: $gitignore_path"
+		return 1
+	fi
+
+	if [[ -e "$gitignore_path" ]] && [[ ! -f "$gitignore_path" || ! -r "$gitignore_path" ]]; then
+		log_error "Cannot safely update helper .gitignore: $gitignore_path"
+		return 1
+	fi
+
+	if [[ -e "$gitignore_path" && ! -w "$gitignore_path" ]]; then
+		log_error "Cannot safely update helper .gitignore: $gitignore_path"
+		return 1
+	fi
+
+	if [[ -f "$gitignore_path" ]]; then
+		if grep -Fqx -- "$ignore_entry" "$gitignore_path"; then
+			log_info "ShellCheck binary directory is already ignored in helper .gitignore: $gitignore_path"
+			return 0
+		else
+			grep_status="$?"
+		fi
+
+		if [[ "$grep_status" -ne 1 ]]; then
+			log_error "Could not inspect helper .gitignore: $gitignore_path"
+			return 1
+		fi
+	fi
+
+	if ! temporary_file="$(mktemp "$helper_directory/.gitignore.XXXXXX")"; then
+		log_error "Could not create a temporary helper .gitignore file in $helper_directory"
+		return 1
+	fi
+
+	if [[ -f "$gitignore_path" ]]; then
+		if ! cp -p "$gitignore_path" "$temporary_file"; then
+			log_error "Could not preserve helper .gitignore permissions: $gitignore_path"
+			cleanup_gitignore_temporary_file "$temporary_file"
+			return 1
+		fi
+
+		if ! last_character="$(tail -c 1 "$gitignore_path")"; then
+			log_error "Could not inspect the end of helper .gitignore: $gitignore_path"
+			cleanup_gitignore_temporary_file "$temporary_file"
+			return 1
+		fi
+		if [[ -n "$last_character" ]] && ! printf '\n' >> "$temporary_file"; then
+			log_error "Could not prepare helper .gitignore for the new entry: $gitignore_path"
+			cleanup_gitignore_temporary_file "$temporary_file"
+			return 1
+		fi
+	else
+		current_umask="$(umask)"
+		new_file_mode="$(printf '%o' "$((0666 & ~(8#$current_umask)))")"
+		if ! chmod "$new_file_mode" "$temporary_file"; then
+			log_error "Could not set permissions for new helper .gitignore"
+			cleanup_gitignore_temporary_file "$temporary_file"
+			return 1
+		fi
+	fi
+
+	if ! printf '%s\n' "$ignore_entry" >> "$temporary_file"; then
+		log_error "Could not append the ShellCheck entry to helper .gitignore"
+		cleanup_gitignore_temporary_file "$temporary_file"
+		return 1
+	fi
+
+	if ! mv -f "$temporary_file" "$gitignore_path"; then
+		log_error "Could not replace helper .gitignore: $gitignore_path"
+		cleanup_gitignore_temporary_file "$temporary_file"
+		return 1
+	fi
+
+	log_success "Added bin/ to helper .gitignore: $gitignore_path"
+}
+
 cleanup_agents_temporary_file() {
 	local temporary_file="$1"
 
@@ -493,6 +608,9 @@ install_shellcheck() {
 			return 1
 		fi
 		if ! shellcheck_path="$(local_shellcheck_command_path "$helper_directory")"; then
+			return 1
+		fi
+		if ! update_shellcheck_gitignore "$helper_directory" "$shellcheck_path"; then
 			return 1
 		fi
 	else

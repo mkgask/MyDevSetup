@@ -101,6 +101,6 @@ bash .dev/language-tools.sh shell
 shellcheck path/to/script.sh
 ```
 
-セットアップ成功時は AGENTS.md の管理ブロックへ ShellCheck の利用案内と実際の実行 command を登録します。AGENTS.md を安全に更新できない場合はエラーとなりますが、導入済みの ShellCheck は取り消しません。
+プロジェクトローカルに導入・再利用した場合は、既定では `.dev/.gitignore` に `bin/` を追加します。インストール先を変更した場合は、変更後のディレクトリにある `.gitignore` に `bin/` を追加します。セットアップ成功時は AGENTS.md の管理ブロックへ ShellCheck の利用案内と実際の実行 command を登録します。インストール先の `.gitignore` または AGENTS.md を安全に更新できない場合はエラーとなりますが、導入済みの ShellCheck は取り消しません。
 
 スクリプトは ShellCheck の実行や PATH / shell 設定の変更を行いません。`shell` 以外の未対応ツールを指定した場合は、Usage とエラーを表示して終了します。共有開発ツールの導入や AI 向けプロジェクト初期化は `.dev/dev-tools.sh install` / `init` が扱います。
